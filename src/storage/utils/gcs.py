@@ -1,6 +1,6 @@
 from google.cloud import storage
 from google.cloud.exceptions import GoogleCloudError
-from src.config import PROJECT_ID, BUCKET_NAME, get_logger
+from src.storage.config import PROJECT_ID, BUCKET_NAME, get_logger
 
 logger = get_logger(__name__)
 

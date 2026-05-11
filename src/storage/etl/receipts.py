@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
-from src.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
+from src.storage.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
 from src.storage.utils.gcs import upload_to_gcs
 from src.storage.utils.shell import run_shell, _cleanup
 
 logger = get_logger(__name__)
 
-def _extract_tx_hashes(tx_file: str, min_eth: int = 100) -> str:
+def _extract_tx_hashes(tx_file: str, min_eth: int = 100) -> tuple[str, int]:
     """transactions JSON → 고래(100 ETH 이상) 트랜잭션 hash 목록 txt"""
     hash_file = tx_file.replace(".json", "_whale_hashes.txt")
     hashes = []
@@ -35,7 +35,7 @@ def _extract_tx_hashes(tx_file: str, min_eth: int = 100) -> str:
 
         # 로그도 간지나게 고래 아이콘 하나 넣어줍니다.
         logger.info(f"🐳 {min_eth} ETH 이상 고래 트랜잭션 해시 {len(hashes)}개 추출 완료 → {hash_file}")
-        return hash_file
+        return hash_file, len(hashes)
         
     except Exception:
         logger.exception(f"트랜잭션 해시 추출 중 오류 발생 (파일: {tx_file})")
@@ -55,7 +55,7 @@ def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) 
         logger.info(f"Receipts & Logs 추출 시작 (Block: {start} ~ {end})")
         
         # 1. 해시 추출
-        hash_file = _extract_tx_hashes(tx_file)
+        hash_file, whale_count = _extract_tx_hashes(tx_file)
 
         # 2. 셸 명령어 실행
         cmd = (
@@ -88,6 +88,7 @@ def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) 
         upload_to_gcs(log_file, f"{GCS_BRONZE_PREFIX}/logs/dt={date_str}/{log_file}")
         
         return {
+            "whale_count": whale_count,
             "receipt_count": receipt_count,
             "receipt_file_size": receipt_file_size,
             "log_file_size": log_file_size

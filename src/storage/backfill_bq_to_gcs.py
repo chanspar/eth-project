@@ -1,6 +1,6 @@
 from google.cloud import bigquery
 from datetime import datetime, timedelta
-from src.config import PROJECT_ID, BUCKET_NAME
+from src.storage.config import PROJECT_ID, BUCKET_NAME
 
 # 설정
 START_DATE = "2026-04-24"

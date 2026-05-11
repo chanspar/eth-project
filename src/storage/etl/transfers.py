@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
+from src.storage.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
 from src.storage.utils.gcs import upload_to_gcs
 from src.storage.utils.shell import run_shell, _cleanup
 

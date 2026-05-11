@@ -1,7 +1,7 @@
 import subprocess
 import os
 from pathlib import Path
-from src.config import get_logger
+from src.storage.config import get_logger
 from src.storage.utils.gcs import upload_to_gcs
 
 logger = get_logger(__name__)
@@ -12,12 +12,18 @@ def run_shell(command: str) -> None:
     try:
         logger.info(f"명령어 실행 시작: {command}")
         
+        # 가상환경의 bin 폴더를 PATH에 추가하여 실행 파일(ethereumetl 등)을 찾을 수 있게 함
+        env = os.environ.copy()
+        venv_bin = "/opt/airflow/eth_etl_venv/bin"
+        env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
+
         result = subprocess.run(
             command, 
             shell=True, 
             capture_output=True, 
             text=True,
-            check=True
+            check=True,
+            env=env
         )
         
         if result.stdout:

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 # logging 모듈 대신 get_logger 임포트
-from src.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
+from src.storage.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
 from src.storage.utils.shell import run_and_upload, _cleanup
 
 logger = get_logger(__name__)
