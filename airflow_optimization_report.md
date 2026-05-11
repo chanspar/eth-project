@@ -33,14 +33,38 @@ Airflow 제어부와 ETL 작업부의 파이썬 버전을 분리하여 의존성
     - `__await__` 가짜 메서드로 비동기 검증 통과
     - `__call__` 메서드로 실제 실행은 동기 방식으로 즉시 처리
 
+### ✅ 이슈 5: Etherscan API 오타 및 미래 날짜 조회 에러 (`NOTOK`)
+- **증상**: `status` 오타로 인한 `KeyError` 발생 및 내일 날짜 블록 조회 시 `NOTOK` 에러 발생.
+- **해결**: 
+    - `stauts` -> `status` 오타 수정.
+    - 요청 시점이 미래일 경우 현재 시간(`now`)으로 자동 조정하여 API 에러 방지.
+    - `AirflowFailException` 임포트 경로를 Airflow 3 SDK 규격으로 업데이트.
+
+### ✅ 이슈 6: DAG 실행 병렬 제어 및 순차 처리
+- **증상**: `catchup=True` 설정 시 가벼운 태스크들(`calculate_block_range`)이 여러 날짜에 걸쳐 한꺼번에 실행됨.
+- **해결**: `max_active_runs=1` 설정을 추가하여 하루치 작업을 완전히 끝내고 다음 날 작업을 시작하도록 순차 실행 보장.
+
+### ✅ 이슈 7: 가상환경 바이너리 실행 권한 및 경로 문제
+- **증상**: `ethereumetl` 명령어 실행 시 `Permission denied` 또는 `Command not found` 발생.
+- **해결**:
+    - `Dockerfile`: 가상환경 폴더 소유권을 `airflow` 유저로 변경 (`chown`).
+    - `shell.py`: 명령 실행 시 가상환경의 `bin` 폴더를 `PATH` 환경 변수에 자동으로 추가하도록 로직 보강.
+
+### ✅ 이슈 8: GCP GCS 인증 에러 (`DefaultCredentialsError`)
+- **증상**: 데이터 추출 후 GCS 업로드 단계에서 인증 키를 찾지 못해 실패.
+- **해결**: 
+    - `.env`: `GOOGLE_APPLICATION_CREDENTIALS` 경로 정의.
+    - `docker-compose.yaml`: 로컬의 `gcp-key.json` 파일을 컨테이너 내 정해진 경로로 마운트하여 인증 정보 제공.
+
 ## 4. 인프라 관리 도구 (Makefile)
 복잡한 도커 명령어를 단순화하기 위해 루트에 `Makefile`을 도입했습니다.
-- `make init`: 초기 이미지 빌드 및 DB 마이그레이션
+- `make init`: 초기 이미지 빌드, 권한 설정 및 DB 마이그레이션
 - `make up`: 서비스 백그라운드 실행
-- `make restart`: 설정 변경 후 즉시 재적용
+- `make restart`: 코드/설정 변경 후 컨테이너 재시작
 - `make logs`: 실시간 로그 모니터링
 
 ## 5. 향후 유지보수 가이드
-- **의존성 추가**: Airflow용은 `requirements.txt`, ETL용은 `requirements-etl.txt`에 나누어 관리하세요.
-- **알림 수정**: 알림 메시지 템플릿은 `dags/utils/notifications.py`의 `Airflow3SlackNotifier` 클래스 내부에서 수정 가능합니다.
-- **커넥션**: 슬랙 알림이 안 올 경우 에어플로우 Web UI에서 `eth_etl_webhook` 커넥션(HTTP 타입, Password에 URL 입력)이 정상인지 확인하세요.
+- **의존성 관리**: Airflow 라이브러리는 `requirements.txt`, ETL 도구는 `requirements-etl.txt`에 분리해서 관리하세요.
+- **인증 보안**: `gcp-key.json` 파일은 절대 Git에 커밋하지 마세요 (`.gitignore` 확인 필수).
+- **성능 튜닝**: 대량 데이터 수집 시 Alchemy 플랜에 맞춰 `max_workers`와 `batch_size`를 조정하세요.
+- **모니터링**: 슬랙 알림이 오지 않는다면 `Admin > Connections`에서 `eth_etl_webhook` 설정을 점검하세요.

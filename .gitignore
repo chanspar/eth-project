@@ -218,3 +218,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 .DS_Store
+
+# GCP Keys
+gcp-key.json
+*.json
+!airflow_optimization_report.md
