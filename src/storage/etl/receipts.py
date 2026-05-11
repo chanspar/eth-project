@@ -7,34 +7,45 @@ from src.storage.utils.shell import run_shell, _cleanup
 
 logger = get_logger(__name__)
 
-def _extract_tx_hashes(tx_file: str) -> str:
-    """transactions JSON → 트랜잭션 hash 목록 txt"""
-    hash_file = tx_file.replace(".json", "_hashes.txt")
+def _extract_tx_hashes(tx_file: str, min_eth: int = 100) -> str:
+    """transactions JSON → 고래(100 ETH 이상) 트랜잭션 hash 목록 txt"""
+    hash_file = tx_file.replace(".json", "_whale_hashes.txt")
     hashes = []
+    
+    # 🌟 1 ETH = 10^18 Wei (이더리움의 기본 단위)
+    wei_threshold = min_eth * (10 ** 18)
 
     try:
-        # 인코딩 명시 (Windows 등에서 에러 방지)
         with open(tx_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    hashes.append(json.loads(line)["hash"])
+                    tx_data = json.loads(line)
+                    
+                    # 🌟 value(전송된 ETH 양)가 없는 경우 0으로 처리
+                    # 이더리움 트랜잭션 json의 value는 문자열 타입("1000000000...")이므로 정수형으로 변환
+                    tx_value = int(tx_data.get("value", "0"))
+                    
+                    # 기준치(100 ETH) 이상인 트랜잭션 해시만 수집
+                    if tx_value >= wei_threshold:
+                        hashes.append(tx_data["hash"])
 
         with open(hash_file, "w", encoding="utf-8") as f:
             f.write("\n".join(hashes))
 
-        logger.info(f"📋 트랜잭션 해시 {len(hashes)}개 추출 완료 → {hash_file}")
+        # 로그도 간지나게 고래 아이콘 하나 넣어줍니다.
+        logger.info(f"🐳 {min_eth} ETH 이상 고래 트랜잭션 해시 {len(hashes)}개 추출 완료 → {hash_file}")
         return hash_file
         
     except Exception:
         logger.exception(f"트랜잭션 해시 추출 중 오류 발생 (파일: {tx_file})")
         raise
 
-def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) -> None:
+
+def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) -> dict:
     """
     트랜잭션 파일에서 해시 추출 → 영수증 및 로그 추출 → GCS 업로드
-
-    tx_file: export_blocks_and_transactions()의 반환값
+    반환값: 통계 정보
     """
     hash_file    = ""
     receipt_file = f"receipts_{start}_{end}.json"
@@ -43,7 +54,7 @@ def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) 
     try:
         logger.info(f"Receipts & Logs 추출 시작 (Block: {start} ~ {end})")
         
-        # 1. 해시 추출 (이 과정에서 실패하면 아래 로직은 안 탐)
+        # 1. 해시 추출
         hash_file = _extract_tx_hashes(tx_file)
 
         # 2. 셸 명령어 실행
@@ -61,20 +72,33 @@ def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) 
         if not Path(receipt_file).exists() or not Path(log_file).exists():
             raise FileNotFoundError("ethereumetl 실행 완료 후 영수증/로그 파일이 정상적으로 생성되지 않았습니다.")
 
+        # --- KPI 수집 ---
+        receipt_count = 0
+        with open(receipt_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    receipt_count += 1
+        
+        receipt_file_size = Path(receipt_file).stat().st_size
+        log_file_size = Path(log_file).stat().st_size
+        # ----------------
+
         # 4. GCS 업로드
         upload_to_gcs(receipt_file, f"{GCS_BRONZE_PREFIX}/receipts/dt={date_str}/{receipt_file}")
         upload_to_gcs(log_file, f"{GCS_BRONZE_PREFIX}/logs/dt={date_str}/{log_file}")
         
-        logger.info("작업 성공: Receipts & Logs 업로드 완료")
+        return {
+            "receipt_count": receipt_count,
+            "receipt_file_size": receipt_file_size,
+            "log_file_size": log_file_size
+        }
 
     except Exception:
         logger.exception(f"Receipts & Logs 처리 중 오류 발생 ({start}~{end})")
         raise
 
     finally:
-        # 5. 성공하든 실패하든, 생성된 모든 임시 파일 삭제
-        # _cleanup은 단일 경로를 받으므로 리스트를 순회하며 호출합니다.
         files_to_delete = [tx_file, hash_file, receipt_file, log_file]
         for f_path in files_to_delete:
-            if f_path:  # 파일 경로가 존재하는 경우에만 (hash_file이 빈 문자열일 수 있으므로)
+            if f_path:
                 _cleanup(f_path)

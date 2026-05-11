@@ -1,0 +1,6 @@
+ethereum-etl<=2.4.2
+google-cloud-bigquery
+google-cloud-storage
+httpx
+python-dotenv
+setuptools<70
