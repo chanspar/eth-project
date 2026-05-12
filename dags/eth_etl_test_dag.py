@@ -14,17 +14,18 @@ ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
 
 default_args = {
     "owner": "chanspar",
-    "depends_on_past": False,  # 테스트용이므로 이전 작업 의존성 해제
-    "retries": 0,             # 테스트용이므로 재시도 안 함
+    "depends_on_past": False,
+    "retries": 3,
+    "retry_delay": timedelta(minutes=3),
     "on_failure_callback": task_fail_slack_alert,
 }
 
 
 @dag(
-    dag_id="ethereum_etl_test",  # 🧪 테스트용 DAG ID
+    dag_id="ethereum_etl_test",
     default_args=default_args,
-    start_date=datetime(2026, 5, 10),  # 최근 날짜로 설정
-    schedule=None,                    # 수동 실행 전용
+    start_date=datetime(2026, 5, 11),
+    schedule=None,
     catchup=False,
     on_success_callback=task_succ_slack_alert,
     tags=["test", "ethereum"],
@@ -76,27 +77,26 @@ def ethereum_etl_test_dag():
         )
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_token_transfers_task(range_data: dict) -> str:
+    def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
         import sys
         sys.path.append("/opt/airflow")
-        from src.storage.etl import export_token_transfers
-        return export_token_transfers(
+        from src.storage.etl import export_token_transfers, export_contracts
+        
+        # 1. Token Transfers 추출
+        transfer_file = export_token_transfers(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
-
-    @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_contracts_task(transfer_file: str, range_data: dict) -> None:
-        import sys
-        sys.path.append("/opt/airflow")
-        from src.storage.etl import export_contracts
-        export_contracts(
-            transfer_file=transfer_file,
-            start=range_data["start"],
-            end=range_data["end"],
-            date_str=range_data["date_str"],
-        )
+        
+        # 2. 추출된 파일을 이용해 Contracts 추출
+        if transfer_file:
+            export_contracts(
+                transfer_file=transfer_file,
+                start=range_data["start"],
+                end=range_data["end"],
+                date_str=range_data["date_str"],
+            )
 
     @task
     def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
@@ -138,8 +138,9 @@ def ethereum_etl_test_dag():
     range_info = calculate_block_range()
     blocks_stats = extract_blocks_and_transactions_task(range_info)
     receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
-    transfer_file = extract_token_transfers_task(range_info)
-    extract_contracts_task(transfer_file, range_info)
+    
+    # Token Transfers & Contracts (Merged)
+    extract_token_transfers_and_contracts_task(range_info)
 
     qc = quality_check_task(range_info, blocks_stats, receipts_stats)
     summary = send_summary_report(range_info, blocks_stats, receipts_stats)

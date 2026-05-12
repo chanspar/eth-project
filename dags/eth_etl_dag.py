@@ -15,8 +15,8 @@ ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
 default_args = {
     "owner": "chanspar",
     "depends_on_past": True,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retries": 5,                             # 429 에러 대비 재시도 횟수 증가
+    "retry_delay": timedelta(minutes=3),      # 레이트 리밋이 풀릴 때까지 3분간 대기
     "on_failure_callback": task_fail_slack_alert,
 }
 
@@ -70,7 +70,13 @@ def ethereum_etl_dag():
     @task.external_python(python=ETH_ETL_PYTHON)
     def extract_receipts_and_logs_task(tx_file: str, range_data: dict) -> dict:
         import sys
+        import time
         sys.path.append("/opt/airflow")
+        
+        # 🧊 Alchemy Rate Limit 쿨다운: 대용량 작업 직후 잠깐 대기
+        print("Waiting 60 seconds for Alchemy rate limit cool-down...")
+        time.sleep(60)
+        
         from src.storage.etl import export_receipts_and_logs
         return export_receipts_and_logs(
             tx_file=tx_file,
@@ -80,27 +86,26 @@ def ethereum_etl_dag():
         )
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_token_transfers_task(range_data: dict) -> str:
+    def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
         import sys
         sys.path.append("/opt/airflow")
-        from src.storage.etl import export_token_transfers
-        return export_token_transfers(
+        from src.storage.etl import export_token_transfers, export_contracts
+        
+        # 1. Token Transfers 추출
+        transfer_file = export_token_transfers(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
-
-    @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_contracts_task(transfer_file: str, range_data: dict) -> None:
-        import sys
-        sys.path.append("/opt/airflow")
-        from src.storage.etl import export_contracts
-        export_contracts(
-            transfer_file=transfer_file,
-            start=range_data["start"],
-            end=range_data["end"],
-            date_str=range_data["date_str"],
-        )
+        
+        # 2. 추출된 파일을 이용해 Contracts 추출
+        if transfer_file:
+            export_contracts(
+                transfer_file=transfer_file,
+                start=range_data["start"],
+                end=range_data["end"],
+                date_str=range_data["date_str"],
+            )
 
     @task
     def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
@@ -178,14 +183,17 @@ def ethereum_etl_dag():
     # Receipts & Logs  (XComArg subscript으로 tx_file 키 직접 참조)
     receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
 
-    # Token Transfers & Contracts
-    transfer_file = extract_token_transfers_task(range_info)
-    extract_contracts_task(transfer_file, range_info)
+    # Token Transfers & Contracts (Merged)
+    # ⚠️ 병렬 실행 시 Alchemy 429 에러 방지를 위해 Receipts 작업 완료 후 시작하도록 설정
+    transfers = extract_token_transfers_and_contracts_task(range_info)
+    transfers << receipts_stats
 
-    # QC → Summary (QC 통과 후에만 리포트 전송)
+    # QC → Summary (모든 추출 작업 완료 후에만 진행)
     qc = quality_check_task(range_info, blocks_stats, receipts_stats)
     summary = send_summary_report(range_info, blocks_stats, receipts_stats)
-    summary << qc  # summary는 qc 성공 이후에만 실행
+    
+    # ⚠️ 모든 작업이 완료된 후 QC와 Summary를 하도록 의존성 명시
+    transfers >> qc >> summary
 
 
 ethereum_etl_dag()
