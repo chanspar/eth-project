@@ -223,3 +223,6 @@ __marimo__/
 gcp-key.json
 *.json
 !airflow_optimization_report.md
+
+
+logs

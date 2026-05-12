@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime, timezone
-from src.storage.config import PROVIDER_URI, get_logger
+from src.config import PROVIDER_URI, get_logger
 
 logger = get_logger(__name__)
 

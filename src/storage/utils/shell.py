@@ -1,7 +1,7 @@
 import subprocess
 import os
 from pathlib import Path
-from src.storage.config import get_logger
+from src.config import get_logger
 from src.storage.utils.gcs import upload_to_gcs
 
 logger = get_logger(__name__)

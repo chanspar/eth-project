@@ -25,13 +25,13 @@ default_args = {
     dag_id="ethereum_etl_to_gcs",
     default_args=default_args,
     start_date=datetime(2026, 5, 1),
-    schedule="0 1 * * *",  # 매일 새벽 1시 실행
+    schedule="0 10 * * *",  # 매일 오전 10시 실행
     catchup=True,
     max_active_runs=1,
     on_success_callback=task_succ_slack_alert,
     deadline=DeadlineAlert(
         reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
-        interval=timedelta(hours=15),
+        interval=timedelta(hours=2),
         callback=AsyncCallback(task_fail_slack_alert),
     ),
     tags=["ethereum", "etl", "gcs"],
