@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 from src.silver.spark_config import WEI_PER_ETH, read_bronze, get_logger, get_spark_session
+from src.silver.utils import write_silver
 from src.config import BUCKET_NAME, GCS_SILVER_PREFIX
 from src.schema.bronze_schema import transaction_schema, receipt_schema, block_schema
 from pyspark.sql import functions as F
@@ -127,21 +128,6 @@ def run_quality_check(df):
     logger.info("=" * 30)
 
 
-def write_silver(df, silver_path: str):
-    """Silver 레이어 저장"""
-    logger = get_logger("Write Silver")
-    output_path = f"{silver_path}/txn_enriched"
-    
-    logger.info(f"💾 Silver 레이어 저장 시작: {output_path}")
-    (
-        df
-        .repartition("dt")
-        .write
-        .mode("overwrite")
-        .partitionBy("dt")
-        .parquet(output_path)
-    )
-    logger.info(f"✅ 저장 완료: {output_path}")
 
 
 def main():
@@ -176,7 +162,7 @@ def main():
         run_quality_check(df)
 
     # 3. 저장
-    write_silver(df, silver_path)
+    write_silver(df, "txn_enriched")
 
     # 4. 리소스 해제
     df.unpersist() # 캐시 해제

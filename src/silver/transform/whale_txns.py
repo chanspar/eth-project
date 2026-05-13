@@ -2,6 +2,7 @@ from pyspark.sql import functions as F
 from pyspark.sql import Window, SparkSession, DataFrame
 from src.silver.spark_config import read_silver, get_logger, get_spark_session
 from src.silver.known_labels import load_label_df
+from src.silver.utils import write_silver
 from src.schema.silver_schema import enriched_transaction_schema
 from src.config import BUCKET_NAME, GCS_SILVER_PREFIX
 
@@ -184,21 +185,6 @@ def run_summary(df: DataFrame):
 
 
 # 이거는 나중에 utils에 따로 빼야겠다.
-def write_silver(df, silver_path: str):
-    """Silver 레이어 저장"""
-    logger = get_logger("Write Silver whales")
-    output_path = f"{silver_path}/whale_txns"
-    
-    logger.info(f"💾 Silver 레이어 저장 시작: {output_path}")
-    (
-        df
-        .repartition("dt")
-        .write
-        .mode("overwrite")
-        .partitionBy("dt")
-        .parquet(output_path)
-    )
-    logger.info(f"✅ 저장 완료: {output_path}")
 
 
 def main():
@@ -235,7 +221,7 @@ def main():
 		run_summary(df)
 
     # 3. 저장
-	write_silver(df, silver_path)
+	write_silver(df, "whale_txns")
 
     # 4. 리소스 해제
 	df.unpersist() # 캐시 해제
