@@ -40,8 +40,8 @@ bronze/
 2. Celery 혹은 Kubernetes 이용 고려
   - 아마 쿠버네티스를 이용 할 듯
   - 이유: Celery는 항상 실행되어 있고 블록마다 담긴 트랜잭션 수가 들쭉날쭉한 데이터 특성상 쿠버네티스가 맞다. 
-    - 현재 ethereum_etl은 python3.9 기반이고, airflow는 python 3.12 기반이므로 각 환경별로 쿠버네티스 클러스터를 구성할 수 있다.
-    - 아니면 ExternalPythonOperator 이거 써야 된다고 한다.
+    - 현재 ethereum_etl은 python3.9 기반이고, airflow는 python 3.13 기반이므로 각 환경별로 쿠버네티스 클러스터를 구성할 수 있다.
+    - 아니면 ExternalPythonOperator 이거 써야 된다고 한다. <- 현재는 이걸 사용 중(05.13일 기준)
 
 ---
 

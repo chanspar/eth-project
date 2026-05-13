@@ -69,3 +69,148 @@ def load_label_df(spark: SparkSession):
 		for addr, (name, category) in KNOWN_LABELS.items()
     ]
 	return spark.createDataFrame(rows, ["address", "label_name", "label_category"])
+
+
+DEX_ADDRESSES = {
+
+    # -------------------------------------------------------------------------
+    # Uniswap
+    # -------------------------------------------------------------------------
+    "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": "Uniswap V2: Router",
+    "0xe592427a0aece92de3edee1f18e0157c05861564": "Uniswap V3: Router",
+    "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": "Uniswap V3: Router2",
+    "0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b": "Uniswap: Universal Router (Old)",
+    "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD": "Uniswap: Universal Router",
+    "0x000000000004444c5dc75cb358380d2e3de08a90": "Uniswap V4: PoolManager", 
+
+    # -------------------------------------------------------------------------
+    # SushiSwap
+    # -------------------------------------------------------------------------
+    "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f": "SushiSwap: Router",
+
+    # -------------------------------------------------------------------------
+    # PancakeSwap (Ethereum)
+    # -------------------------------------------------------------------------
+    "0x13f4ea83d0bd40e75c8222255bc855a974568dd4": "PancakeSwap V3: Router",
+
+    # -------------------------------------------------------------------------
+    # Curve
+    # -------------------------------------------------------------------------
+    "0x99a58482bd75cbab83b27ec03ca68ff489b5788f": "Curve: Router",
+    "0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7": "Curve: 3pool (DAI/USDC/USDT)",    
+    "0xdc24316b9ae028f1497c275eb9192a3ea0f67022": "Curve: stETH Pool",              
+
+    # -------------------------------------------------------------------------
+    # Balancer
+    # -------------------------------------------------------------------------
+    "0xba12222222228d8ba445958a75a0704d566bf2c8": "Balancer: Vault",
+
+    # -------------------------------------------------------------------------
+    # Fraxswap
+    # -------------------------------------------------------------------------
+    "0xc14d550632db8592d1243edc8b95b0ad06703867": "Fraxswap: Router",               
+
+    # -------------------------------------------------------------------------
+    # 1inch
+    # -------------------------------------------------------------------------
+    "0x1111111254fb6c44bac0bed2854e76f90643097d": "1inch: Aggregation Router V4",
+    "0x1111111254eeb25477b68fb85ed929f73a960582": "1inch: Aggregation Router V5",
+
+    # -------------------------------------------------------------------------
+    # 0x Protocol
+    # -------------------------------------------------------------------------
+    "0xdef1c0ded9bec7f1a1670819833240f027b25eff": "0x: Exchange Proxy",
+
+    # -------------------------------------------------------------------------
+    # ParaSwap
+    # -------------------------------------------------------------------------
+    "0xdef171fe48cf0115b1d80b88dc8eab59176fee57": "ParaSwap: Augustus Swapper",
+
+    # -------------------------------------------------------------------------
+    # KyberSwap
+    # -------------------------------------------------------------------------
+    "0x6131b5fae19ea4f9d964eac0408e4408b66337b5": "KyberSwap: Meta Aggregation Router V2", 
+
+    # -------------------------------------------------------------------------
+    # Odos
+    # -------------------------------------------------------------------------
+    "0xcf5540fffcdc3d510b18bfca6d2b9987b0772559": "Odos: Router V2",                 
+
+    # -------------------------------------------------------------------------
+    # OpenOcean
+    # -------------------------------------------------------------------------
+    "0x6352a56caadc4f1e25cd6c75970fa768a3304e64": "OpenOcean: Exchange Proxy",   
+}
+
+TOKEN_META = {
+    # --- Native & Wrapped Assets ---
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": ("WETH",   "Wrapped Ether",              18),
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": ("WBTC",   "Wrapped BTC",                 8),
+
+    # --- Stablecoins (USDT/USDC/PYUSD는 6자리, 나머지는 18자리) ---
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": ("USDT",   "Tether USD",                  6),
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": ("USDC",   "USD Coin",                    6),
+    "0x6b175474e89094c44da98b954eedeac495271d0f": ("DAI",    "Dai Stablecoin",             18),
+    "0x853d955acef822db058eb8505911ed77f175b99e": ("FRAX",   "Frax",                       18),
+    "0x0000000000085d4780b73119b644ae5ecd22b376": ("TUSD",   "TrueUSD",                    18),
+    "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8": ("PYUSD",  "PayPal USD",                  6),
+    "0x4c9edd5852cd905f086c759e8383e09bff1e68b3": ("USDe",   "Ethena USDe",               18),  # ✨ 추가
+
+    # --- Liquid Staking (LSD) ---
+    "0xae7ab96520de3a18e5e111b5eaab095312d7fe84": ("stETH",  "Liquid staked Ether",        18),
+    "0xae78736cd615f374d3085123a210448e74fc6393": ("rETH",   "Rocket Pool ETH",            18),
+    "0xbe9895146f7af43049ca1c1ae358b0541ea49704": ("cbETH",  "Coinbase Wrapped ETH",       18),
+    "0xcd5fe23c85820f7b72d0926fc9b05b43e359b7ee": ("weETH",  "Wrapped eETH (ether.fi)",   18),  # ✨ 추가
+
+    # --- DeFi Bluechips ---
+    "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984": ("UNI",    "Uniswap",                    18),
+    "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9": ("AAVE",   "Aave",                       18),
+    "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2": ("MKR",    "Maker",                      18),
+    "0x514910771af9ca656af840dff83e8264ecf986ca": ("LINK",   "Chainlink",                  18),
+    "0xd533a949740bb3306d119cc777fa900ba034cd52": ("CRV",    "Curve DAO Token",            18),
+    "0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f": ("SNX",    "Synthetix Network",          18),
+    "0xba100000625a3754423978a60c9317c58a424e3d": ("BAL",    "Balancer",                   18),
+    "0xc00e94cb662c3520282e6f5717214004a7f26888": ("COMP",   "Compound",                   18),  # ✨ 추가
+    "0x6b3595068778dd592e39a122f4f5a5cf09c90fe2": ("SUSHI",  "SushiSwap",                  18),  # ✨ 추가
+    "0x4e3fbd56cd56c3e72c1403e103b45db9da5b9d2b": ("CVX",    "Convex Finance",             18),  # ✨ 추가
+    "0x5a98fcbea516cf06857215779fd812ca3bef1b32": ("LDO",    "Lido DAO",                   18),  # ✨ 추가
+    "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72": ("ENS",    "Ethereum Name Service",      18),  # ✨ 추가
+    "0xc944e90c64b2c07662a292be6244bdf05cda44a7": ("GRT",    "The Graph",                  18),  # ✨ 추가
+    "0x57e114b691db790c35207b2e685d4a43181e6061": ("ENA",    "Ethena",                     18),  # ✨ 추가
+
+    # --- L2 & Infrastructure ---
+    "0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0": ("MATIC",  "Polygon (Old)",              18),
+    "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6": ("POL",    "Polygon Ecosystem Token",   18),
+    "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1": ("ARB",    "Arbitrum",                   18),
+    "0xbbbbca6a901c926f240b89eacb641d8aec7aeafd": ("LRC",    "Loopring",                   18),  # ✅ 주소 수정
+    "0x111111111117dc0aa78b770fa6a738034120c302": ("1INCH",  "1inch",                      18),
+    "0xd33526068d116ce69f19a9ee46f0bd304f21a51f": ("RPL",    "Rocket Pool",                18),  # ✨ 추가
+
+    # --- AI & Memecoins ---
+    "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce": ("SHIB",   "Shiba Inu",                  18),
+    "0x6982508145454ce325ddbe47a25d4ec3d2311933": ("PEPE",   "Pepe",                       18),
+    "0x4d224452801aced8b2f0aebe155379bb5d594381": ("APE",    "ApeCoin",                    18),
+    "0x4e15361fd6b4bb609fa63c81a2be19d873717870": ("FTM",    "Fantom",                     18),
+
+    # --- Exchange Tokens ---
+    "0xb8c77482e45f1f44de1745f52c74426c631bdd52": ("BNB",    "BNB",                        18),
+}
+
+# ERC-20 전송 이벤트 시그니처 (Transfer topic0)
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+def load_token_meta_df(spark: SparkSession):
+    """TOKEN_META dict → Spark DataFrame (브로드캐스트 조인용)"""
+    rows = [
+        (addr.lower(), symbol, name, decimals)
+        for addr, (symbol, name, decimals) in TOKEN_META.items()
+    ]
+    return spark.createDataFrame(
+        rows, ["token_address", "symbol", "token_name", "decimals"]
+    )
+
+
+def load_dex_df(spark: SparkSession):
+    """DEX_ADDRESSES dict → Spark DataFrame"""
+    rows = [(addr.lower(), label) for addr, label in DEX_ADDRESSES.items()]
+    return spark.createDataFrame(rows, ["address", "dex_name"])

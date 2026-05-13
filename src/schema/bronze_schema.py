@@ -81,7 +81,7 @@ token_transfer_schema = StructType([
 ])
 
 
-smart_contract_schema = StructType([
+contract_schema = StructType([
     StructField("address", StringType(), True),
     StructField("bytecode", StringType(), True),
     # 여러 개의 함수 시그니처 해시값이 배열 형태로 들어오므로 ArrayType 지정

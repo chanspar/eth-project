@@ -31,7 +31,7 @@ default_args = {
     on_success_callback=task_succ_slack_alert,
     deadline=DeadlineAlert(
         reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
-        interval=timedelta(hours=2),
+        interval=timedelta(hours=12),
         callback=AsyncCallback(task_fail_slack_alert),
     ),
     tags=["ethereum", "etl", "gcs"],

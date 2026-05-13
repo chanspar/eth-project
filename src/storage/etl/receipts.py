@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 
-from src.config import PROVIDER_URI, GCS_BRONZE_PREFIX, ETL_MAX_WORKERS, ETL_BATCH_SIZE, get_logger
+from src.config import PROVIDER_URI, GCS_BRONZE_PREFIX, get_logger
 from src.storage.utils.gcs import upload_to_gcs
 from src.storage.utils.shell import run_shell, _cleanup
 
 logger = get_logger(__name__)
 
-def _extract_tx_hashes(tx_file: str, min_eth: int = 100) -> tuple[str, int]:
-    """transactions JSON → 고래(100 ETH 이상) 트랜잭션 hash 목록 txt"""
+def _extract_tx_hashes(tx_file: str, min_eth: int = 1) -> tuple[str, int]:
+    """transactions JSON → (1 ETH 이상) 트랜잭션 hash 목록 txt"""
     hash_file = tx_file.replace(".json", "_whale_hashes.txt")
     hashes = []
     

@@ -121,3 +121,52 @@
 - **경로**: `gs://[BUCKET_NAME]/silver/ethereum/whale_txns/dt=YYYY-MM-DD/`
 - **포맷**: Parquet
 - **파티션**: `dt`
+
+---
+
+
+# Silver Layer: `token_flow` 테이블 정의서
+
+`src/silver/transform/token_flow.py` 실행 시 생성되는 ERC-20 토큰의 이동 흐름을 추적하는 테이블입니다.
+이 테이블은 **Token Transfers**, **Contracts**, **Blocks** 데이터를 결합하고, 토큰 메타데이터(Symbol, Decimals) 및 DEX(Decentralized Exchange) 라벨을 추가하여 분석하기 쉬운 형태로 가공되었습니다.
+
+## 1. 주요 특징 (Key Features)
+
+1.  **ERC-20 필터링**: `contracts` 테이블의 `is_erc20` 플래그를 사용하여 실제 ERC-20 토큰 전송 건만 선별합니다.
+2.  **금액 정규화 (Normalization)**: 토큰마다 다른 `decimals`를 적용하여 `value_normalized` (실제 통용되는 토큰 개수 단위) 컬럼을 생성합니다.
+3.  **DEX 라벨링**: 송신처(`from_address`) 또는 수신처(`to_address`)가 Uniswap, SushiSwap 등 주요 DEX인 경우 해당 거래소 이름을 표기합니다. 이는 고래의 매도/매수 행태 분석에 필수적입니다.
+4.  **브로드캐스트 조인**: 소규모 테이블인 토큰 메타 및 DEX 라벨 데이터를 Broadcast Join하여 처리 속도를 최적화했습니다.
+
+## 2. 테이블 스키마 (Schema)
+
+| 컬럼명 | 타입 | 설명 | 비고 |
+| :--- | :--- | :--- | :--- |
+| **transaction_hash** | String | 트랜잭션 해시 | |
+| **block_number** | Long | 블록 번호 | |
+| **block_timestamp** | Long | 블록 생성 시각 | |
+| **dt** | Date | 파티션 날짜 | |
+| **token_address** | String | 토큰 컨트랙트 주소 | |
+| **symbol** | String | 토큰 심볼 (예: USDC, WETH) | |
+| **from_address** | String | 송신자 주소 | |
+| **to_address** | String | 수신자 주소 | |
+| **value_normalized** | Double | 정규화된 토큰 전송량 | `value / 10^decimals` |
+| **from_dex** | String | 송신처 DEX 이름 | DEX가 아닐 경우 null |
+| **to_dex** | String | 수신처 DEX 이름 | DEX가 아닐 경우 null |
+
+---
+
+## 3. 데이터 예시 (Example Rows)
+
+| symbol | value_normalized | from_address | to_address | from_dex | to_dex |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `USDC` | 50,000.0 | `0xwhale...` | `0xuniswap_pool...` | *null* | **Uniswap V3** |
+| `WETH` | 15.5 | `0xuser...` | `0xbinance_hot...` | *null* | *null* |
+| `USDT` | 120,000.0 | `0xsushiswap...` | `0xwhale...` | **SushiSwap** | *null* |
+| `LINK` | 1,000.0 | `0xsender...` | `0xreceiver...` | *null* | *null* |
+
+---
+
+## 4. 저장 위치 및 포맷
+- **경로**: `gs://[BUCKET_NAME]/silver/ethereum/token_flow/dt=YYYY-MM-DD/`
+- **포맷**: Parquet
+- **파티션**: `dt`
