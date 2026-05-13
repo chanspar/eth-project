@@ -597,7 +597,7 @@ wheels = [
 [[package]]
 name = "eth-project"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "ethereum-etl" },
     { name = "google-cloud-bigquery" },
