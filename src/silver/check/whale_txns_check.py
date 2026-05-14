@@ -1,6 +1,5 @@
 import argparse
 from pyspark.sql import SparkSession, functions as F
-from pyspark.sql.types import DoubleType
 from src.silver.spark_config import get_spark_session, get_logger, read_silver
 from src.schema.silver_schema import whale_txn_schema
 
@@ -18,9 +17,33 @@ def run_whale_kpi_check(spark: SparkSession, dt: str):
         return
 
     total_count = df.count()
-    if total_count == 0:
-        logger.warning(f"⚠️ {dt_partition} 날짜에 고래 데이터가 없습니다.")
-        return
+    
+    # 🚨 [Critical Check] 시스템 무결성 검증 (로직 결함 체크)
+    critical_errors = []
+    
+    # 1. 데이터 유실 검증 (고래가 단 한 명도 없는 최악의 상황이 아니라면 통과)
+    if total_count < 1:
+        critical_errors.append("Absolute Data Loss: 0 rows")
+
+    # 2. 필수 컬럼 Null 체크 (조인/파싱 오류)
+    null_counts = df.filter(
+        F.col("hash").isNull() | 
+        F.col("from_address").isNull() | 
+        F.col("to_address").isNull() |
+        F.col("value_eth").isNull()
+    ).count()
+    if null_counts > 0:
+        critical_errors.append(f"Null Values in Essential Columns: {null_counts} rows")
+
+    # 3. 데이터 정합성 체크 (고래 거래인데 금액이 0 이하인 경우)
+    invalid_value_count = df.filter(F.col("value_eth") <= 0).count()
+    if invalid_value_count > 0:
+        critical_errors.append(f"Invalid Whale Value (<= 0): {invalid_value_count} rows")
+
+    if critical_errors:
+        for err in critical_errors:
+            logger.error(f"❌ [Critical Error] {err}")
+        raise ValueError(f"Data Quality Check Failed: {', '.join(critical_errors)}")
 
     logger.info("=" * 60)
     logger.info(f"📊 [Whale Watcher KPI Report] 날짜: {dt_partition}")

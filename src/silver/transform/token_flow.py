@@ -28,10 +28,10 @@ def build_token_flow(spark: SparkSession, dt: str):
         F.col("timestamp").alias("block_timestamp")
     )
 
-    # transfers 중 ERC-20 컨트랙트인 것만 남김 (Inner Join 효과)
+    # 모든 토큰 전송 내역을 살리되, ERC-20 검증 여부는 나중에 판단 (Left Join)
     flow = (
         transfers
-        .join(F.broadcast(erc20_contracts), on="token_address", how="inner")
+        .join(F.broadcast(erc20_contracts), on="token_address", how="left")
     )
     
     flow = (

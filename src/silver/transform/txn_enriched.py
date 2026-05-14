@@ -47,7 +47,7 @@ def build_txn_enriched(spark: SparkSession, dt: str):
 
 	enriched = (
         txns
-        .join(receipts_slim, join_cond_receipt, how="inner")
+        .join(receipts_slim, join_cond_receipt, how="left")
         # blocks와 조인할 때 중복되는 block_number 대신 명확한 컬럼 사용
         .join(blocks_slim, F.col("block_number") == F.col("block_number_from_block"), how="left")
         .drop("transaction_hash", "receipt_block_number", "block_number_from_block", "block_timestamp_from_block")
