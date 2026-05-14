@@ -25,6 +25,8 @@ ETL_BATCH_SIZE  = int(os.getenv("ETL_BATCH_SIZE", "5"))   # 무료 티어 극보
 # ── GCS 경로 prefix ─────────────────────────────────────
 GCS_BRONZE_PREFIX = "bronze"
 GCS_SILVER_PREFIX = "silver"
+GCS_GOLD_PREFIX = "gold"
+BQ_DATASET = os.getenv("BQ_DATASET", "eth_gold_analysis")
 
 
 def validate_config() -> None:

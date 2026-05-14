@@ -64,6 +64,18 @@ class Airflow3SlackNotifier:
         """inspect.isawaitable() 우회용"""
         return self.__call__().__await__()
 
+
+def send_slack_message(text: str):
+    """
+    Airflow context 없이 일반적인 메시지를 Slack으로 전송합니다.
+    분석 결과 리포트용으로 사용합니다.
+    """
+    from airflow.providers.slack.hooks.slack_webhook import SlackWebhookHook
+    
+    hook = SlackWebhookHook(slack_webhook_conn_id=SLACK_DAG_CONN_ID)
+    hook.send(text=text)
+    print("DEBUG: Slack message sent successfully.")
+
 # 객체 생성
 task_fail_slack_alert = Airflow3SlackNotifier(is_fail=True)
 task_succ_slack_alert = Airflow3SlackNotifier(is_fail=False)
