@@ -148,7 +148,7 @@ def main():
     if args.summary:
         run_summary(df)
 	
-    write_silver(df, silver_path)
+    write_silver(df, "token_flow")
     
     df.unpersist() # 캐시 해제
     spark.stop()
