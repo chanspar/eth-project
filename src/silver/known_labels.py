@@ -2,62 +2,222 @@ from pyspark.sql import SparkSession
 
 
 KNOWN_LABELS = {
-    # --- CEX (중앙화 거래소) ---
+
+    # =========================================================
+    # ================= CENTRALIZED EXCHANGES =================
+    # =========================================================
+
     # Binance
-    "0x28c6c06298d514db089934071355e5743bf21d60": ("Binance", "CEX"),
-    "0x21a31ee1afc51d94c2efccaa2092ad1028285549": ("Binance Cold", "CEX"),
-    "0xdfd5293d8e347dfe59e90efd55b2956a1343963d": ("Binance Hot", "CEX"),
-    "0x56eddb7aa87536c09ccc2793473599fd21a8b17f": ("Binance US", "CEX"),
-    "0x8894e0a0c962cb723c1976a4421c95949be2d4e3": ("Binance Bridge", "CEX"),
-    
+    "0x28c6c06298d514db089934071355e5743bf21d60": ("Binance 14", "CEX"),
+    "0x21a31ee1afc51d94c2efccaa2092ad1028285549": ("Binance 15", "CEX"),
+    "0xdfd5293d8e347dfe59e90efd55b2956a1343963d": ("Binance 16", "CEX"),
+    "0xf977814e90da44bfa03b6295a0616a897441acec": ("Binance Hot Wallet", "CEX"),
+    "0x5a52e96bacdabb82fd05763e25335261b270efcb": ("Binance 28", "CEX"),
+
     # Coinbase
-    "0x0681d8db095565fe8a346fa0277bffde9c0edbbf": ("Coinbase", "CEX"),
-    "0x503828976d22510aad0201ac7ec88293211d23da": ("Coinbase 2", "CEX"),
-    "0xddfabcdc4d8ffc6d5beaf154f18b778f892a0740": ("Coinbase 3", "CEX"),
-    "0x3cd751e6b0078be393132286c442345e5dc49699": ("Coinbase 4", "CEX"),
-    "0x71660c4005ba85c37ccec55d0c4493e66fe775d3": ("Coinbase 5", "CEX"),
-    "0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43": ("Coinbase 6", "CEX"),
-    
-    # OKX & KuCoin & Kraken
-    "0x77696bb39917c91a0c3d2f859fd1afaa0b2b5bdb": ("OKX", "CEX"),
-    "0x98ec059dc3adfbdd63429454aeb0c990fba4a128": ("OKX 2", "CEX"),
-    "0x6cc5f688a315f3dc28a7781717a9a798a59fda7b": ("OKX 3", "CEX"),
-    "0x2b5634c42055806a59e9107ed44d43c426e58258": ("KuCoin", "CEX"),
-    "0x689c56aef474df92d44a1b70850f808488f9769c": ("KuCoin 2", "CEX"),
-    "0xd6216fc19db775df9774a6e33526131da7d19a2c": ("KuCoin 3", "CEX"),
-    "0x2910543af39aba0cd09dbb2d50200b3e800a63d2": ("Kraken", "CEX"),
-    "0xc6bed363b30df7f35b601a5547fe56cd31ec63da": ("Kraken 2", "CEX"),
-    "0x267be1c1d684f78cb4f6a176c4911b741e4ffdc0": ("Kraken 3", "CEX"),
+    "0x71660c4005ba85c37ccec55d0c4493e66fe775d3": ("Coinbase 1", "CEX"),
+    "0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43": ("Coinbase 10", "CEX"),
+    "0x503828976d22510aad0201ac7ec88293211d23da": ("Coinbase 12", "CEX"),
+    "0xddfabcdc4d8ffc6d5beaf154f18b778f892a0740": ("Coinbase 23", "CEX"),
+    "0x3cd751e6b0078be393132286c442345e5dc49699": ("Coinbase 33", "CEX"),
 
-    # 국내 거래소 (추가됨)
-    "0x3f5ce5fb1162781181f7d1be1816ed04e6e000ef": ("Upbit Hot Wallet", "CEX"),
-    "0x3282772591605330a84e9a7e0a2d592a832f0857": ("Bithumb", "CEX"),
+    # Kraken
+    "0x2910543af39aba0cd09dbb2d50200b3e800a63d2": ("Kraken 1", "CEX"),
+    "0xc6bed363b30df7f35b601a5547fe56cd31ec63da": ("Kraken 8", "CEX"),
 
-    # --- DEX / DeFi 프로토콜 ---
+    # OKX
+    "0x6cc5f688a315f3dc28a7781717a9a798a59fda7b": ("OKX 1", "CEX"),
+    "0x5041ed759dd4afc3a72b8192c143f72f4724081a": ("OKX 7", "CEX"),
+
+    # KuCoin
+    "0x2b5634c42055806a59e9107ed44d43c426e58258": ("KuCoin 1", "CEX"),
+
+    # Bitfinex
+    "0x742d35cc6634c0532925a3b844bc454e4438f44e": ("Bitfinex Cold Wallet", "CEX"),
+
+    # Bybit
+    "0xf89d7b9c864f589bbf53a82105107622b35eaa40": ("Bybit Hot Wallet", "CEX"),
+
+    # Gate.io
+    "0x0d0707963952f2fba59dd06f2b425ace40b492fe": ("Gate.io Hot Wallet", "CEX"),
+
+    # HTX (Huobi)
+    "0xab5c66752a9e8167967685f1450532fb96d5d24f": ("HTX Hot Wallet", "CEX"),
+
+    # Upbit
+    "0xcc6411d9501a4e21a24d5ba1860d5ddaf2bc6de2": ("Upbit 2", "CEX"),
+
+    # Bithumb
+    "0xb2ebc9b3a788afb1e942ed65b59e9e49a1ee500d": ("Bithumb 1", "CEX"),
+    "0x3282772591605330a84e9a7e0a2d592a832f0857": ("Bithumb 3", "CEX"),
+
+
+    # =========================================================
+    # ====================== DEX / DEFI =======================
+    # =========================================================
+
+    # Uniswap
     "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": ("Uniswap V2 Router", "DEX"),
     "0xe592427a0aece92de3edee1f18e0157c05861564": ("Uniswap V3 Router", "DEX"),
-    "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": ("Uniswap V3 Router2", "DEX"),
-    "0xc36442b4a4522e871399cd717abdd847ab11fe88": ("Uniswap V3 Positions", "DEX"),
+    "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45": ("Uniswap Universal Router", "DEX"),
+    "0xc36442b4a4522e871399cd717abdd847ab11fe88": ("Uniswap V3 Position Manager", "DEX"),
+
+    # SushiSwap
     "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f": ("SushiSwap Router", "DEX"),
-    "0x1111111254fb6c44bac0bed2854e76f90643097d": ("1inch V3", "DEX"),
-    "0x1111111254eeb25477b68fb85ed929f73a960582": ("1inch V4", "DEX"),
+
+    # 1inch
+    "0x1111111254fb6c44bac0bed2854e76f90643097d": ("1inch Router V4", "DEX"),
+    "0x1111111254eeb25477b68fb85ed929f73a960582": ("1inch Router V5", "DEX"),
+
+    # PancakeSwap (Ethereum)
+    "0xeff92a263d31888d860bd50809a8d171709b7b1c": ("PancakeSwap Router", "DEX"),
+
+    # Balancer
+    "0xba12222222228d8ba445958a75a0704d566bf2c8": ("Balancer Vault", "DEX"),
+
+    # Curve
+    "0xd533a949740bb3306d119cc777fa900ba034cd52": ("Curve DAO Token", "DeFi"),
+
+    # Aave
     "0x7d2768de32b0b80b7a3454c06bdac94a69ddc7a9": ("Aave V2 Lending Pool", "DeFi"),
+
+    # Compound
+    "0x3d9819210a31b4961b30ef54be2aed79b9c9cd3b": ("Compound Comptroller", "DeFi"),
+
+    # MakerDAO
+    "0x35d1b3f3d7966a1dfe207aa4514c12a259a0492b": ("MakerDAO Proxy Registry", "DeFi"),
+
+    # Lido
     "0xae7ab96520de3a18e5e111b5eaab095312d7fe84": ("Lido stETH", "DeFi"),
 
-    # --- 핵심 토큰 컨트랙트 (추가됨) ---
+
+    # =========================================================
+    # ===================== TOKEN CONTRACTS ===================
+    # =========================================================
+
+    # Stablecoins
     "0xdac17f958d2ee523a2206206994597c13d831ec7": ("Tether USD (USDT)", "Token"),
-    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": ("Circle USDC", "Token"),
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": ("USD Coin (USDC)", "Token"),
+    "0x6b175474e89094c44da98b954eedeac495271d0f": ("DAI Stablecoin", "Token"),
+
+    # Wrapped Assets
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": ("Wrapped Ether (WETH)", "Token"),
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": ("Wrapped BTC (WBTC)", "Token"),
 
-    # --- 브리지 / 레이어2 ---
-    "0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf": ("Polygon Bridge", "Bridge"),
-    "0x8484ef722627bf18ca5ae6bcf031c23e6e922b30": ("Polygon Bridge 2", "Bridge"),
-    "0x99c9fc46f92e8a1c0dec1b1747d010903e884be1": ("Optimism Bridge", "Bridge"),
-    "0x4dbd4fc535ac27206064b68ffcf827b0a60bab3f": ("Arbitrum Bridge", "Bridge"),
+    # Governance / Utility
+    "0x514910771af9ca656af840dff83e8264ecf986ca": ("Chainlink Token (LINK)", "Token"),
+    "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984": ("Uniswap Token (UNI)", "Token"),
 
-    # --- 기타 인프라 ---
-    "0x00000000219ab540356cbb839cbe05303d7705fa": ("ETH2 Deposit", "Staking"),
-    "0xd1669ac6044269b59fa12c5822439f609ca54f41": ("ETH Burn", "Burn"),
+
+    # =========================================================
+    # ==================== BRIDGE / LAYER2 ====================
+    # =========================================================
+
+    # Polygon
+    "0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf": ("Polygon ERC20 Bridge", "Bridge"),
+
+    # Optimism
+    "0x99c9fc46f92e8a1c0dec1b1747d010903e884be1": ("Optimism Gateway", "Bridge"),
+
+    # Arbitrum
+    "0x4dbd4fc535ac27206064b68ffcf827b0a60bab3f": ("Arbitrum ERC20 Bridge", "Bridge"),
+
+    # Hop
+    "0x3666f603cc164936c1b87e207f36beba4ac5f18a": ("Hop Protocol Bridge", "Bridge"),
+
+    # Wormhole
+    "0x3ee18b2214aff97000d974cf647e7c347e8fa585": ("Wormhole Token Bridge", "Bridge"),
+
+    # Stargate
+    "0x8731d54e9d02c286767d56ac03e8037c07e01e98": ("Stargate Router", "Bridge"),
+
+
+    # =========================================================
+    # ====================== STAKING ==========================
+    # =========================================================
+
+    # ETH2 Deposit
+    "0x00000000219ab540356cbb839cbe05303d7705fa": ("ETH2 Deposit Contract", "Staking"),
+
+    # Rocket Pool
+    "0xae78736cd615f374d3085123a210448e74fc6393": ("Rocket Pool rETH", "Staking"),
+
+    # Coinbase Wrapped Staked ETH
+    "0xbe9895146f7af43049ca1c1ae358b0541ea49704": ("Coinbase Wrapped Staked ETH", "Staking"),
+
+
+    # =========================================================
+    # ======================= MEV =============================
+    # =========================================================
+
+    # Flashbots
+    "0x000000000000bbbbb8f225d8f3e2c72c129c28f": ("Flashbots Builder", "MEV"),
+
+    # BeaverBuild
+    "0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5": ("BeaverBuild", "MEV"),
+
+    # Wintermute
+    "0x00000000ae347930bd1e7b0f35588b92280f9e75": ("Wintermute", "MarketMaker"),
+
+
+    # =========================================================
+    # ======================= MIXER ===========================
+    # =========================================================
+
+    # Tornado Cash
+    "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b": ("Tornado Cash Router", "Mixer"),
+
+
+    # =========================================================
+    # ======================= TREASURY ========================
+    # =========================================================
+
+    # Tether Treasury
+    "0x5754284f345afc66a98fbb0a0afe71e0f007b949": ("Tether Treasury", "Treasury"),
+
+    # Circle Treasury
+    "0x55fe002aeff02f77364de339a1292923a15844b8": ("Circle Treasury", "Treasury"),
+
+
+    # =========================================================
+    # ======================== ORACLE =========================
+    # =========================================================
+
+    # Chainlink ETH/USD
+    "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419": ("Chainlink ETH/USD Oracle", "Oracle"),
+
+
+    # =========================================================
+    # ========================= NFT ===========================
+    # =========================================================
+
+    # OpenSea Wyvern
+    "0x7be8076f4ea4a4ad08075c2508e481d6c946d12b": ("OpenSea Wyvern Exchange", "NFT"),
+
+    # OpenSea Seaport
+    "0x00000000006c3852cbef3e08e8df289169ede581": ("OpenSea Seaport", "NFT"),
+
+    # Blur
+    "0x39da41747a83aee658334415666f3ef92dd0d541": ("Blur Exchange", "NFT"),
+    "0x000000000000ad05ccc4f10045630fb830b95127": ("Blur Pool", "NFT"),
+
+    # ENS
+    "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85": ("ENS NFT", "NFT"),
+
+
+    # =========================================================
+    # ========================= INFRA =========================
+    # =========================================================
+
+    # Gnosis Safe
+    "0xa6b71e26c5e0845f74c812102ca7114b6a896ab2": ("Gnosis Safe Proxy Factory", "Infra"),
+
+
+    # =========================================================
+    # ====================== BURN / NULL ======================
+    # =========================================================
+
+    "0x000000000000000000000000000000000000dead": ("Dead Address", "Burn"),
     "0x0000000000000000000000000000000000000000": ("Null Address", "Burn"),
 }
 

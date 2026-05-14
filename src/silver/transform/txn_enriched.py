@@ -95,39 +95,6 @@ def build_txn_enriched(spark: SparkSession, dt: str):
 	return enriched.select(*final_cols)
 
 
-def run_quality_check(df):
-    """데이터 품질 검증 함수 (Logger 기반 출력)"""
-    logger = get_logger("Quality Check")
-    
-    total = df.count()
-    if total == 0:
-        logger.warning("⚠️ 데이터가 비어 있어 품질 체크를 건너뜁니다.")
-        return
-
-    logger.info("=" * 30)
-    logger.info(f"📊 [품질 체크 결과] 총 트랜잭션: {total:,}")
-
-    success_count = df.filter(F.col("is_success")).count()
-    failed_count = total - success_count
-    logger.info(f"✅ 성공: {success_count:,} / ❌ 실패: {failed_count:,} ({failed_count/total*100:.1f}%)")
-
-    # 수수료 통계
-    stats = df.select(
-        F.round(F.avg(F.col("tx_fee_eth").cast(DoubleType())), 6).alias("avg_fee"),
-        F.round(F.max(F.col("tx_fee_eth").cast(DoubleType())), 4).alias("max_fee"),
-    ).collect()[0]
-    
-    logger.info(f"💰 수수료(ETH) - 평균: {stats['avg_fee']}, 최대: {stats['max_fee']}")
-
-    # 타입 분포 (문자열로 합쳐서 한 번에 출력)
-    types_df = df.groupBy("tx_type_label").count().orderBy("count", ascending=False).collect()
-    type_stats = ", ".join([f"{row['tx_type_label']}: {row['count']:,}" for row in types_df])
-    logger.info(f"📝 타입 분포: {type_stats}")
-    logger.info("=" * 30)
-
-
-
-
 def main():
     import argparse
     import time
@@ -135,35 +102,22 @@ def main():
     
     parser = argparse.ArgumentParser(description="Ethereum Silver Layer: txn_enriched 빌드")
     parser.add_argument("--date", required=True, help="처리할 날짜 (YYYY-MM-DD 또는 dt=YYYY-MM-DD)")
-    parser.add_argument("--quality-check", action="store_true", help="품질 체크 실행 여부")
     args = parser.parse_args()
 
-    # 경로 고정 (config의 설정값 활용)
     spark = get_spark_session("Main")
-    silver_path = f"gs://{BUCKET_NAME}/{GCS_SILVER_PREFIX}"
     dt_val = args.date if "dt=" in args.date else f"dt={args.date}"
     
     start_time = time.time()
 
     logger.info(f"🔧 Silver txn_enriched 빌드 프로세스 시작: {dt_val}")
-    logger.info(f"📂 Silver 저장 경로: {silver_path}")
 
     # 1. 데이터 생성
     df = build_txn_enriched(spark, dt_val)
     
-    # 캐싱 적용 (품질 체크와 저장 시 데이터를 재사용하기 위함)
-    df.cache()
-    logger.info("⚡ DataFrame 캐싱 완료 (성능 최적화)")
-
-    # 2. 품질 체크 (옵션)
-    if args.quality_check:
-        run_quality_check(df)
-
-    # 3. 저장
+    # 2. 저장
     write_silver(df, "txn_enriched")
 
-    # 4. 리소스 해제
-    df.unpersist() # 캐시 해제
+    # 3. 리소스 해제
     spark.stop()
     
     end_time = time.time()
@@ -173,11 +127,5 @@ def main():
 
 
 if __name__ == "__main__":
-    """
-    # 품질 체크 포함 실행
-    uv run python src/silver/transform/txn_enriched.py --date 2026-05-01 --quality-check
-
-    # 저장만 수행
-    uv run python src/silver/transform/txn_enriched.py --date 2026-05-01
-    """
+    """uv run python src/silver/transform/txn_enriched.py --date 2026-05-01"""
     main()
