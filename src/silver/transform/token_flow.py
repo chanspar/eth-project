@@ -1,16 +1,23 @@
-import argparse
-from pyspark.sql import SparkSession, Window
+from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType
-from src.silver.spark_config import read_bronze
+from src.silver.spark_config import read_bronze, get_spark_session, get_logger
+from src.silver.utils import write_silver
 from src.schema.bronze_schema import token_transfer_schema, contract_schema, block_schema
 from src.silver.known_labels import load_token_meta_df, load_dex_df
+from src.config import BUCKET_NAME, GCS_SILVER_PREFIX
 
 def build_token_flow(spark: SparkSession, dt: str):
+    logger = get_logger("Build Token Flow")
+
+    logger.info(f"[build_token_flow] - [{dt}] 데이터 로드")
+
     transfers = read_bronze(spark, "token_transfers", dt, token_transfer_schema)
     contracts = read_bronze(spark, "contracts", dt, contract_schema)
     blocks = read_bronze(spark, "blocks", dt, block_schema)
     
+    logger.info(f"[build_token_flow] - [{dt}] 데이터 로드 완료")
+
     # ERC-20 필터
     erc20_contracts = contracts.filter(F.col("is_erc20") == True).select(
         F.col("address").alias("token_address")
@@ -63,7 +70,7 @@ def build_token_flow(spark: SparkSession, dt: str):
 
     # ── 최종 컬럼 선택 ──
     final_cols = [
-        "transaction_hash", "block_number", "block_timestamp", "dt",
+        "transaction_hash", "block_timestamp", "dt",
         "token_address", "symbol",
         "from_address", "to_address",
         "value_normalized", 
@@ -112,26 +119,51 @@ def run_summary(df):
 
 
 def main():
+    import argparse
+    import time
+
+    logger = get_logger("Main")
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date",          required=True, help="YYYY-MM-DD format")
-    parser.add_argument("--bronze-bucket", required=True)
-    parser.add_argument("--silver-bucket", required=True)
+    parser.add_argument("--date", required=True, help="YYYY-MM-DD format")
+    parser.add_argument("--summary", action="store_true", help="summary")
     args = parser.parse_args()
 
-    spark = build_spark()
+    spark = get_spark_session("Main")
     spark.sparkContext.setLogLevel("WARN")
+    silver_path = f"gs://{BUCKET_NAME}/{GCS_SILVER_PREFIX}"
+    dt_val = args.date if "dt=" in args.date else f"dt={args.date}"
 
-    print(f"\n🐋 Silver whale_flow 빌드 시작: {args.date}")
+    start_time = time.time()
 
-    df = build_whale_flow(spark, args.bronze_bucket, args.silver_bucket, args.date)
+    logger.info(f"Silver token_flow 빌드 시작: {args.date}")
+
+    df = build_token_flow(spark, dt_val)
 
     # 데이터 건수 간략히 확인 (선택 사항)
+    df.cache()
     count = df.count()
-    print(f"처리된 ERC-20 Transfer 건수: {count:,} 건")
+    logger.info(f"처리된 ERC-20 Transfer 건수: {count:,} 건")
 
-    write_silver(df, args.silver_bucket)
+    if args.summary:
+        run_summary(df)
+	
+    write_silver(df, silver_path)
+    
+    df.unpersist() # 캐시 해제
     spark.stop()
 
+    end_time = time.time()
+    duration = end_time - start_time
+    logger.info(f"✅ 전체 소요 시간: {int(duration // 60)}분 {duration % 60:.2f}초")
+    logger.info("👋 Spark 세션 종료 및 리소스 해제 완료")
 
 if __name__ == "__main__":
+    """
+    # 요약도 실행
+    uv run src/silver/transform/token_flow.py --date 2026-05-01 --summary
+
+    # 요약 없이 실행
+    uv run src/silver/transform/token_flow.py --date 2026-05-01
+    """
     main()

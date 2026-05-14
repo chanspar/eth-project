@@ -130,12 +130,12 @@ def build_whale_txns(spark: SparkSession, dt: str, threshold_eth: float) -> Data
 
 	final_cols = [
         # 식별
-        "hash", "block_number", "block_timestamp", "dt",
+        "hash", "block_timestamp", "dt",
         # 주소 + 라벨
         "from_address", "from_label", "from_category",
         "to_address",   "to_label",   "to_category",
-        # 금액 및 수수료 (txn_enriched 컬럼명 준수)
-        "value_eth", "tx_fee_eth",
+        # 금액
+        "value_eth",
         # 누적 통계
         "from_cumul_sent_eth", "from_cumul_tx_count",
         "to_cumul_recv_eth",   "to_cumul_tx_count",
@@ -190,6 +190,7 @@ def run_summary(df: DataFrame):
 def main():
 	import argparse
 	import time
+	
 	logger = get_logger("Main")
 
 	parser = argparse.ArgumentParser(description="Ethereum Silver Layer: whale_txn 빌드")

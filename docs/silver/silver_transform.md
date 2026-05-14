@@ -10,17 +10,10 @@
 | **hash** | String | 트랜잭션 해시 | PK 역할을 수행하는 고유 ID |
 | **block_number** | Long | 블록 번호 | |
 | **block_timestamp** | Long | 블록 생성 시각 (Unix Timestamp) | |
-| **transaction_index** | Integer | 블록 내 트랜잭션 순서 | |
 | **from_address** | String | 송신자 주소 | |
 | **to_address** | String | 수신자 주소 | 컨트랙트 배포 시 null |
 | **contract_address** | String | 생성된 컨트랙트 주소 | 컨트랙트 배포(deploy) 시에만 값이 존재 |
 | **value_eth** | Decimal(38,18) | 송금 금액 (ETH 단위) | 정밀한 계산 결과값 |
-| **gas** | Long | 요청한 가스 한도 (Gas Limit) | |
-| **gas_used** | Decimal(38,0) | 실제 소모된 가스량 | Receipts 데이터에서 추출 |
-| **effective_gas_price** | Decimal(38,0) | 실제 적용된 가스 단가 (Wei) | EIP-1559 등에 따른 최종 가격 |
-| **tx_fee_eth** | Decimal(38,18) | 총 트랜잭션 수수료 (ETH) | 정밀한 계산 결과값 |
-| **miner** | String | 블록 생성자(마이너) 주소 | Blocks 데이터에서 조인 |
-| **transaction_type** | Integer | 트랜잭션 타입 코드 | 0, 1, 2, 3 등 |
 | **tx_type_label** | String | 트랜잭션 타입 라벨 | legacy, eip1559, blob 등 |
 | **is_success** | Boolean | 트랜잭션 성공 여부 | `status == 1` |
 | **is_contract_call** | Boolean | 컨트랙트 호출 여부 | `input` 데이터 존재 여부로 판별 |
@@ -74,6 +67,7 @@
 | 컬럼명 | 타입 | 설명 | 비고 |
 | :--- | :--- | :--- | :--- |
 | **hash** | String | 트랜잭션 해시 | |
+| **block_timestamp** | Long | 블록 생성 시각 | |
 | **dt** | Date | 파티션 날짜 | |
 | **from_address** | String | 송신자 주소 | |
 | **from_label** | String | 송신자 엔티티 이름 | (예: Binance, Upbit, Unknown) |
@@ -82,7 +76,6 @@
 | **to_label** | String | 수신자 엔티티 이름 | |
 | **to_category** | String | 수신자 카테고리 | |
 | **value_eth** | Decimal(38,18) | 트랜잭션 금액 (ETH) | |
-| **tx_fee_eth** | Decimal | 트랜잭션 수수료 (ETH) | |
 | **from_cumul_sent_eth** | Double | 해당 주소의 당일 누적 송금액 | Window function 결과 |
 | **from_cumul_tx_count** | Long | 해당 주소의 당일 누적 거래 횟수 | Window function 결과 |
 | **flag_cex_deposit** | Boolean | 거래소 입금 플래그 | |
@@ -142,7 +135,6 @@
 | 컬럼명 | 타입 | 설명 | 비고 |
 | :--- | :--- | :--- | :--- |
 | **transaction_hash** | String | 트랜잭션 해시 | |
-| **block_number** | Long | 블록 번호 | |
 | **block_timestamp** | Long | 블록 생성 시각 | |
 | **dt** | Date | 파티션 날짜 | |
 | **token_address** | String | 토큰 컨트랙트 주소 | |

@@ -83,12 +83,10 @@ def build_txn_enriched(spark: SparkSession, dt: str):
 	)
 
 	final_cols = [
-			"hash", "block_number", "block_timestamp", "transaction_index",
+			"hash", "block_number", "block_timestamp",
 			"from_address", "to_address", "contract_address",
 			"value_eth", "tx_fee_eth", 
-			"gas", "gas_used", "effective_gas_price", 
-			"miner", 
-			"transaction_type", "tx_type_label",
+			"tx_type_label",
 			"is_success", "is_contract_call", "is_contract_deploy",
 			"input", "dt"
 	]
