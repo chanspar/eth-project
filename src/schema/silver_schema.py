@@ -8,14 +8,8 @@ enriched_transaction_schema = StructType([
     StructField("block_timestamp", LongType(), True),
     StructField("from_address", StringType(), True),
     StructField("to_address", StringType(), True),
-    StructField("contract_address", StringType(), True),
     StructField("value_eth", DecimalType(38, 18), True),
-    StructField("tx_fee_eth", DecimalType(38, 18), True),
-    StructField("tx_type_label", StringType(), True),
     StructField("is_success", BooleanType(), True),
-    StructField("is_contract_call", BooleanType(), True),
-    StructField("is_contract_deploy", BooleanType(), True),
-    StructField("input", StringType(), True),
     StructField("dt", DateType(), True)
 ])
 

@@ -55,12 +55,13 @@ def get_top_whales(df: DataFrame, top_n: int) -> DataFrame:
             F.col("to_address").alias("address"),
             F.col("to_cumul_recv_eth").cast(DoubleType()).alias("total_recv_eth"),
             F.col("to_cumul_tx_count").alias("recv_count"),
+            F.col("dt"),
         )
     )
 
     # 주소 기준 outer join (개인 지갑들끼리의 이동 분석)
     whales = (
-        sent_final.join(recv_final, on="address", how="outer")
+        sent_final.join(recv_final, on=["address", "dt"], how="outer")
         .fillna(0, subset=["total_sent_eth", "total_recv_eth", "sent_count", "recv_count"])
         .fillna("Unknown", subset=["address_category", "address_label"])
         .withColumn("total_volume_eth",
@@ -150,6 +151,7 @@ def build_position_timeline(df: DataFrame) -> DataFrame:
             F.col("hash"),
             F.col("to_category").alias("category"),
             F.col("to_label").alias("label"),
+            F.col("dt"),
         )
         .withColumn("direction", F.lit(1.0))
     )
@@ -164,6 +166,7 @@ def build_position_timeline(df: DataFrame) -> DataFrame:
             F.col("hash"),
             F.col("from_category").alias("category"),
             F.col("from_label").alias("label"),
+            F.col("dt"),
         )
         .withColumn("direction", F.lit(-1.0))
     )
@@ -387,12 +390,16 @@ def main():
     spark = get_spark_session("GoldWhaleAnalysis")
     spark.sparkContext.setLogLevel("WARN")
  
-    dt_val = args.date if "dt=" in args.date else f"dt={args.date}"
+    # 날짜 값 처리
+    date_only = args.date.replace("dt=", "")
+    dt_val = f"dt={date_only}"
     start = time.time()
- 
+
     logger.info(f"🐋 Gold whale_analysis 시작: {dt_val}  top_n={args.top_n}")
- 
+
+    # 데이터 로드 및 dt 컬럼 추가 (파티션 경로 직접 로드 시 dt 컬럼이 누락됨)
     df = spark.read.parquet(silver_path("whale_txns", dt_val))
+    df = df.withColumn("dt", F.lit(date_only))
     df.cache()
     logger.info(f"whale_txns 로드 완료: {df.count():,}건")
  
