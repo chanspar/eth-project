@@ -99,13 +99,13 @@ def ethereum_etl_dag():
         )
         
         # 2. 추출된 파일을 이용해 Contracts 추출
-        if transfer_file:
-            export_contracts(
-                transfer_file=transfer_file,
-                start=range_data["start"],
-                end=range_data["end"],
-                date_str=range_data["date_str"],
-            )
+        # if transfer_file:
+        #     export_contracts(
+        #         transfer_file=transfer_file,
+        #         start=range_data["start"],
+        #         end=range_data["end"],
+        #         date_str=range_data["date_str"],
+        #     )
 
     @task
     def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
