@@ -4,3 +4,5 @@ google-cloud-storage
 httpx
 python-dotenv
 setuptools<70
+pendulum
+dill

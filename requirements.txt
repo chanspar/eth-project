@@ -4,3 +4,5 @@ httpx
 python-dotenv
 setuptools<70
 apache-airflow-providers-slack
+pendulum
+dill

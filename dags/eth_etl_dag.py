@@ -25,7 +25,7 @@ default_args = {
     dag_id="ethereum_etl_to_gcs",
     default_args=default_args,
     start_date=datetime(2026, 5, 1),
-    schedule="0 10 * * *",  # 매일 오전 10시 실행
+    schedule="0 1 * * *",  # 매일 오전 1시 실행
     catchup=True,
     max_active_runs=1,
     on_success_callback=task_succ_slack_alert,
@@ -68,53 +68,43 @@ def ethereum_etl_dag():
         )
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_receipts_and_logs_task(tx_file: str, range_data: dict) -> dict:
+    def export_receipts_task(range_data: dict):
+        """영수증 및 로그 추출 (Alchemy 고속 모드)"""
         import sys
-        import time
         sys.path.append("/opt/airflow")
-        
-        # 🧊 Alchemy Rate Limit 쿨다운: 대용량 작업 직후 잠깐 대기
-        print("Waiting 60 seconds for Alchemy rate limit cool-down...")
-        time.sleep(60)
-        
-        from src.storage.etl import export_receipts_and_logs
+        from src.storage.etl.receipts import export_receipts_and_logs
         return export_receipts_and_logs(
-            tx_file=tx_file,
             start=range_data["start"],
             end=range_data["end"],
-            date_str=range_data["date_str"],
+            date_str=range_data["date_str"]
         )
 
     @task.external_python(python=ETH_ETL_PYTHON)
     def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
+        """토큰 전송 내역 및 컨트랙트 추출"""
         import sys
         sys.path.append("/opt/airflow")
-        from src.storage.etl import export_token_transfers, export_contracts
+        from src.storage.etl import export_token_transfers
         
         # 1. Token Transfers 추출
-        transfer_file = export_token_transfers(
+        export_token_transfers(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
         
-        # 2. 추출된 파일을 이용해 Contracts 추출
+        # 2. 추출된 파일을 이용해 Contracts 추출 (선택 사항)
         # if transfer_file:
-        #     export_contracts(
-        #         transfer_file=transfer_file,
-        #         start=range_data["start"],
-        #         end=range_data["end"],
-        #         date_str=range_data["date_str"],
-        #     )
+        #     export_contracts(transfer_file, range_data["start"], range_data["end"], range_data["date_str"])
+
 
     @task
     def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
-        """데이터 정합성(whale_count == receipt_count) 및 0바이트 파일 체크"""
+        """데이터 정합성(Block TX count == Receipt count) 및 0바이트 파일 체크"""
         date_str = range_data["date_str"]
         
-        # [FIX] 100 ETH 필터링으로 인해 전체 트랜잭션 수와 영수증 수는 다를 수 있음
-        # 추출한 고래 해시 수와 실제 저장된 영수증 수를 비교해야 함
-        whale_count = receipts_stats.get("whale_count", 0)
+        # 전체 데이터를 가져오기로 했으므로, 블록 내 트랜잭션 수와 실제 추출된 영수증 수가 일치해야 함
+        total_tx_in_blocks = blocks_stats["total_tx_in_blocks"]
         receipt_count = receipts_stats["receipt_count"]
 
         zero_byte_files = []
@@ -126,10 +116,10 @@ def ethereum_etl_dag():
             zero_byte_files.append("receipts")
 
         issues = []
-        # 고래 해시를 추출했는데 영수증 수가 다르면 문제임
-        if whale_count != receipt_count:
+        # 블록에 기록된 트랜잭션 수와 저장된 영수증 수가 다르면 데이터 누락으로 판단
+        if total_tx_in_blocks != receipt_count:
             issues.append(
-                f"Consistency Mismatch: Whale Hashes ({whale_count}) != Receipts Count ({receipt_count})"
+                f"Count Mismatch: Blocks TX ({total_tx_in_blocks}) != Receipts ({receipt_count})"
             )
         if zero_byte_files:
             issues.append(f"Zero-byte Files Detected: {', '.join(zero_byte_files)}")
@@ -138,62 +128,73 @@ def ethereum_etl_dag():
             error_msg = f"⚠️ Quality Check Failed ({date_str}): " + " | ".join(issues)
             raise AirflowFailException(error_msg)
 
-        print(f"✅ Quality Check Passed for {date_str}: {receipt_count} whale receipts verified.")
+        print(f"✅ Quality Check Passed for {date_str}: {receipt_count} receipts verified.")
         return True
 
     @task
     def send_summary_report(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
-        # [FIX] dag_run 파라미터 제거 → get_current_context() 사용
         context = get_current_context()
         dag_run = context["dag_run"]
 
         date_str = range_data["date_str"]
+        start_blk = range_data["start"]
+        end_blk = range_data["end"]
 
-        # 소요 시간 계산
+        # 1. 소요 시간 계산
         start_date = dag_run.start_date
         duration = datetime.now(start_date.tzinfo) - start_date
         duration_str = str(duration).split(".")[0]  # HH:MM:SS 형식
 
+        # 2. 데이터 통계
+        tx_count = receipts_stats["receipt_count"]
         total_size_bytes = (
             blocks_stats["tx_file_size"]
             + blocks_stats["block_file_size"]
             + receipts_stats["receipt_file_size"]
-            + receipts_stats["log_file_size"]
         )
         total_size_mb = total_size_bytes / (1024 * 1024)
-        est_cost_usd = (total_size_bytes / (1024**3)) * 0.02
+
+        # 3. 비용 및 리소스 추정
+        # Alchemy CU 추정 (영수증 건당 15 CU 소모 기준)
+        est_alchemy_cu = tx_count * 15
+        # GCS 저장 비용 추정 (Nearline 기준 $0.02 / GB)
+        est_gcs_cost_usd = (total_size_bytes / (1024**3)) * 0.02
 
         summary_msg = (
-            f"✅ Ethereum ETL Success Report for {date_str}\n"
-            f"• Duration: {duration_str}\n"
-            f"• Total Data: {total_size_mb:.2f} MB\n"
-            f"• Est. Monthly Cost: ${est_cost_usd:.6f}"
+            f"📊 **Ethereum ETL Success Report ({date_str})**\n"
+            f"• **Blocks**: {start_blk:,} ~ {end_blk:,} ({end_blk - start_blk + 1:,} blocks)\n"
+            f"• **Transactions**: {tx_count:,} receipts verified\n"
+            f"• **Duration**: {duration_str}\n"
+            f"• **Data Size**: {total_size_mb:.2f} MB\n"
+            f"• **Alchemy Resources**: ~{est_alchemy_cu:,} CU consumed\n"
+            f"• **Est. GCS Storage Cost**: ${est_gcs_cost_usd:.6f}"
         )
+        
         print(summary_msg)
         return summary_msg
 
-    # ── Orchestration ──────────────────────────────────────────────────────────
-
+    # 1. 블록 범위 계산
     range_info = calculate_block_range()
 
-    # Blocks & Transactions
+    # 2. 블록/트랜잭션 추출
     blocks_stats = extract_blocks_and_transactions_task(range_info)
 
-    # Receipts & Logs  (XComArg subscript으로 tx_file 키 직접 참조)
-    receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
+    # 3. 영수증 추출 (Alchemy 고속 모드)
+    receipts_stats = export_receipts_task(range_info)
 
-    # Token Transfers & Contracts (Merged)
-    # ⚠️ 병렬 실행 시 Alchemy 429 에러 방지를 위해 Receipts 작업 완료 후 시작하도록 설정
+    # 4. 토큰 전송 추출
+    # ⚠️ 병렬 실행 시 Alchemy 에러 방지를 위해 영수증 작업 완료 후 시작
     transfers = extract_token_transfers_and_contracts_task(range_info)
-    transfers << receipts_stats
 
-    # QC → Summary (모든 추출 작업 완료 후에만 진행)
+    # 5. 정합성 검사 (Blocks TX Count == Receipt Count)
     qc = quality_check_task(range_info, blocks_stats, receipts_stats)
+
+    # 6. 요약 리포트 전송
     summary = send_summary_report(range_info, blocks_stats, receipts_stats)
     
-    # ⚠️ 모든 작업이 완료된 후 QC와 Summary를 하도록 의존성 명시
-    transfers >> qc >> summary
+    # 의존성 연결
+    blocks_stats >> receipts_stats >> transfers >> qc >> summary
 
 
 ethereum_etl_dag()

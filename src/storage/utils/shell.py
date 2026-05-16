@@ -8,32 +8,44 @@ logger = get_logger(__name__)
 
 
 def run_shell(command: str) -> None:
-    """터미널 명령어 실행 (실패 시 상세 로그와 함께 예외 발생)"""
+    """터미널 명령어 실행 (실시간 로그 출력 및 실패 시 예외 발생)"""
     try:
         logger.info(f"명령어 실행 시작: {command}")
         
-        # 가상환경의 bin 폴더를 PATH에 추가하여 실행 파일(ethereumetl 등)을 찾을 수 있게 함
         env = os.environ.copy()
         venv_bin = "/opt/airflow/eth_etl_venv/bin"
         env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
 
-        result = subprocess.run(
-            command, 
-            shell=True, 
-            capture_output=True, 
+        # Popen을 사용하여 실시간 스트리밍 모드로 실행
+        # stderr를 stdout으로 통합하여 모든 메시지를 순서대로 캡처
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            check=True,
-            env=env
+            env=env,
+            bufsize=1  # 라인 버퍼링 활성화
         )
+
+        # 출력을 한 줄씩 읽어서 실시간 로깅
+        if process.stdout:
+            for line in process.stdout:
+                clean_line = line.strip()
+                if clean_line:
+                    # ethereumetl의 진행 상황이나 에러 메시지를 즉시 출력
+                    logger.info(f"[Shell] {clean_line}")
+
+        # 프로세스가 끝날 때까지 대기
+        return_code = process.wait()
         
-        if result.stdout:
-            logger.debug(f"명령어 출력(stdout):\n{result.stdout.strip()}")
+        if return_code != 0:
+            raise subprocess.CalledProcessError(return_code, command)
             
         logger.info("명령어 실행 성공.")
 
     except subprocess.CalledProcessError as e:
         logger.error(f"명령어 실행 실패 (Exit Code: {e.returncode})")
-        logger.error(f"에러 메시지(stderr):\n{e.stderr.strip()}")
         raise
     except Exception:
         logger.exception(f"명령어 실행 중 예상치 못한 예외 발생: {command}")
