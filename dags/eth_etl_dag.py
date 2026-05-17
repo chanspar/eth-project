@@ -61,11 +61,14 @@ def ethereum_etl_dag():
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_blocks_and_transactions
-        return export_blocks_and_transactions(
+        result = export_blocks_and_transactions(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
+        # Task SDK 로그에서 확인 가능한 디버깅 메시지
+        print(f"DEBUG: extract_blocks_and_transactions_task result: {result}")
+        return result
 
     @task.external_python(python=ETH_ETL_PYTHON)
     def export_receipts_task(range_data: dict):
@@ -101,11 +104,20 @@ def ethereum_etl_dag():
     @task
     def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
         """데이터 정합성(Block TX count == Receipt count) 및 0바이트 파일 체크"""
+        if range_data is None:
+            raise AirflowFailException("❌ Quality Check Failed: 'range_data' is None.")
+        
+        # 이전 태스크의 XCom 결과가 없는 경우에 대한 방어 코드 추가
+        if blocks_stats is None:
+            raise AirflowFailException("❌ Quality Check Failed: 'blocks_stats' XCom을 찾을 수 없습니다. extract_blocks_and_transactions_task가 성공했는지 확인하세요.")
+        if receipts_stats is None:
+            raise AirflowFailException("❌ Quality Check Failed: 'receipts_stats' XCom을 찾을 수 없습니다. export_receipts_task가 성공했는지 확인하세요.")
+
         date_str = range_data["date_str"]
         
         # 전체 데이터를 가져오기로 했으므로, 블록 내 트랜잭션 수와 실제 추출된 영수증 수가 일치해야 함
-        total_tx_in_blocks = blocks_stats["total_tx_in_blocks"]
-        receipt_count = receipts_stats["receipt_count"]
+        total_tx_in_blocks = blocks_stats.get("total_tx_in_blocks", 0)
+        receipt_count = receipts_stats.get("receipt_count", 0)
 
         zero_byte_files = []
         if blocks_stats["tx_file_size"] == 0:
@@ -134,6 +146,9 @@ def ethereum_etl_dag():
     @task
     def send_summary_report(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
+        if range_data is None or blocks_stats is None or receipts_stats is None:
+            return "⚠️ Summary Report Skip: Missing input data (None)."
+
         context = get_current_context()
         dag_run = context["dag_run"]
 
@@ -147,11 +162,11 @@ def ethereum_etl_dag():
         duration_str = str(duration).split(".")[0]  # HH:MM:SS 형식
 
         # 2. 데이터 통계
-        tx_count = receipts_stats["receipt_count"]
+        tx_count = receipts_stats.get("receipt_count", 0)
         total_size_bytes = (
-            blocks_stats["tx_file_size"]
-            + blocks_stats["block_file_size"]
-            + receipts_stats["receipt_file_size"]
+            blocks_stats.get("tx_file_size", 0)
+            + blocks_stats.get("block_file_size", 0)
+            + receipts_stats.get("receipt_file_size", 0)
         )
         total_size_mb = total_size_bytes / (1024 * 1024)
 
@@ -178,23 +193,32 @@ def ethereum_etl_dag():
     range_info = calculate_block_range()
 
     # 2. 블록/트랜잭션 추출
-    blocks_stats = extract_blocks_and_transactions_task(range_info)
+    blocks_stats_arg = extract_blocks_and_transactions_task(range_info)
 
     # 3. 영수증 추출 (Alchemy 고속 모드)
-    receipts_stats = export_receipts_task(range_info)
+    receipts_stats_arg = export_receipts_task(range_info)
 
     # 4. 토큰 전송 추출
     # ⚠️ 병렬 실행 시 Alchemy 에러 방지를 위해 영수증 작업 완료 후 시작
-    transfers = extract_token_transfers_and_contracts_task(range_info)
+    transfers_arg = extract_token_transfers_and_contracts_task(range_info)
 
     # 5. 정합성 검사 (Blocks TX Count == Receipt Count)
-    qc = quality_check_task(range_info, blocks_stats, receipts_stats)
+    # Task 인스턴스를 명확하게 전달
+    qc = quality_check_task(
+        range_data=range_info, 
+        blocks_stats=blocks_stats_arg, 
+        receipts_stats=receipts_stats_arg
+    )
 
     # 6. 요약 리포트 전송
-    summary = send_summary_report(range_info, blocks_stats, receipts_stats)
+    summary = send_summary_report(
+        range_data=range_info, 
+        blocks_stats=blocks_stats_arg, 
+        receipts_stats=receipts_stats_arg
+    )
     
-    # 의존성 연결
-    blocks_stats >> receipts_stats >> transfers >> qc >> summary
+    # 의존성 명시적 연결
+    blocks_stats_arg >> receipts_stats_arg >> transfers_arg >> qc >> summary
 
 
 ethereum_etl_dag()

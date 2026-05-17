@@ -19,14 +19,15 @@ ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
 PROVIDER_URI = f"https://{NETWORK}.g.alchemy.com/v2/{ALCHEMY_KEY}"
 
 # ── ETL 기본 옵션 ────────────────────────────────────────
-ETL_MAX_WORKERS = int(os.getenv("ETL_MAX_WORKERS", "2"))  # 무료 티어 최적화: 2 (병렬 처리로 Latency 감소)
-ETL_BATCH_SIZE  = int(os.getenv("ETL_BATCH_SIZE", "10"))  # 무료 티어 안정성: 10 (320 CU/s 예상)
+ETL_MAX_WORKERS = int(os.getenv("ETL_MAX_WORKERS", "1"))  # 429 에러 방지: 워커 수를 1로 제한
+ETL_BATCH_SIZE  = int(os.getenv("ETL_BATCH_SIZE", "5"))   # 500 CU/s 한도 내 속도 최적화: 배치 크기를 5로 설정
 
 # ── GCS 경로 prefix ─────────────────────────────────────
 GCS_BRONZE_PREFIX = "bronze"
 GCS_SILVER_PREFIX = "silver"
 GCS_GOLD_PREFIX = "gold"
 BQ_DATASET = os.getenv("BQ_DATASET", "eth_gold_analysis")
+ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
 
 
 def validate_config() -> None:
