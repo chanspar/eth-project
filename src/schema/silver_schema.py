@@ -1,4 +1,4 @@
-from pyspark.sql.types import StructType, StructField, StringType, LongType, DecimalType, BooleanType, DateType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, LongType, DecimalType, BooleanType, DateType, DoubleType, IntegerType
 
 
 # Silver 레이어: txn_enriched 테이블 스키마
@@ -18,24 +18,24 @@ enriched_transaction_schema = StructType([
 whale_txn_schema = StructType([
     StructField("hash", StringType(), True),
     StructField("block_timestamp", LongType(), True),
+    StructField("hour", IntegerType(), True),
     StructField("dt", DateType(), True),
     StructField("from_address", StringType(), True),
     StructField("from_label", StringType(), True),
+    StructField("from_entity", StringType(), True),
     StructField("from_category", StringType(), True),
     StructField("to_address", StringType(), True),
     StructField("to_label", StringType(), True),
+    StructField("to_entity", StringType(), True),
     StructField("to_category", StringType(), True),
     StructField("value_eth", DecimalType(38, 18), True),
-    StructField("from_cumul_sent_eth", DecimalType(38, 18), True),
-    StructField("from_cumul_tx_count", LongType(), True),
-    StructField("to_cumul_recv_eth", DecimalType(38, 18), True),
-    StructField("to_cumul_tx_count", LongType(), True),
-    StructField("flag_cex_deposit", BooleanType(), True),
-    StructField("flag_cex_withdrawal", BooleanType(), True),
-    StructField("flag_cex_to_cex", BooleanType(), True),
-    StructField("flag_dex_swap", BooleanType(), True),
-    StructField("flag_high_freq_sender", BooleanType(), True),
-    StructField("has_flag", BooleanType(), True)
+    StructField("cumul_sent_eth", DecimalType(38, 18), True),
+    StructField("cumul_tx_count", LongType(), True),
+    StructField("cumul_recv_eth", DecimalType(38, 18), True),
+    StructField("whale_tier", StringType(), True),
+    StructField("flow_type", StringType(), True),
+    StructField("is_private_transaction", BooleanType(), True),
+    StructField("flag_high_freq", BooleanType(), True)
 ])
 
 

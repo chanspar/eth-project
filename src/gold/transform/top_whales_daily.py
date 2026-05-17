@@ -1,9 +1,9 @@
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession, DataFrame, Window
 from src.silver.spark_config import get_spark_session, read_silver
+from src.schema.silver_schema import whale_txn_schema
 from src.gold.utils import write_gold
 from src.config import get_logger
-
 
 # 고래 티어 재산정 (당일 total_activity 기준으로 재분류)
 def assign_whale_tier(col_name: str) -> F.Column:
@@ -27,7 +27,11 @@ def build_top_whales_daily(spark: SparkSession, dt: str) -> DataFrame:
     logger = get_logger("Build Top Whales")
     logger.info(f"[{dt}] Top Whales Daily 데이터 파이프라인 시작")
     logger.info(f"[{dt}] Silver Layer에서 'whale_txns' 데이터 읽어오기")
-    df = read_silver(spark, "whale_txns", dt)
+    df = read_silver(spark, "whale_txns", dt, schema=whale_txn_schema)
+    
+    # Spark가 파티션 폴더를 직접 읽을 때 파티션 컬럼(dt)이 누락되어 null이 되는 현상 방지
+    date_str = dt.replace("dt=", "")
+    df = df.withColumn("dt", F.to_date(F.lit(date_str)))
     
     
     logger.info("송신(sent) 및 수신(recv) 데이터 집계 중...")

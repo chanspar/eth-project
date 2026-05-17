@@ -102,11 +102,18 @@ def main():
         logger.info(f"🚀 Token Flow 처리 시작: {args.date}")
         df = build_token_flow(spark, dt_val)
         
+        # [성능 최적화] 중복 연산을 방지하기 위해 데이터프레임을 메모리에 캐싱
+        df.cache()
+        
         # 데이터 확인용 (상위 5건 출력)
         print(f"\n📊 [{args.date}] 처리 데이터 샘플 (상위 5건):")
         df.show(5, truncate=False)
 
         write_silver(df, "token_flow")
+        
+        # 메모리 확보를 위해 캐시 해제
+        df.unpersist()
+        
         logger.info(f"✅ [{args.date}] 처리 및 저장 완료")
 
     except Exception as e:

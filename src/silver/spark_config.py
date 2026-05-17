@@ -33,6 +33,7 @@ def get_spark_session(app_name: str):
             .master("local[*]")
             .config("spark.driver.bindAddress", "127.0.0.1")
             .config("spark.driver.host", "127.0.0.1")
+            .config("spark.driver.memory", "4g")  # 4G로 증설하여 캐싱 시 GC Locker OOM 방지
             # 로컬에서는 커넥터 JAR를 Maven에서 자동으로 관리
             .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22")
         )

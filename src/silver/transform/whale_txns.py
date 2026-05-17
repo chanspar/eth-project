@@ -145,12 +145,19 @@ def main():
 		# 1. 데이터 생성
 		df = build_whale_txns(spark, dt_val, args.whale_threshold)
 		
+		# [성능 최적화] 중복 연산을 방지하기 위해 데이터프레임을 메모리에 캐싱
+		df.cache()
+
 		# 데이터 확인용 (상위 5건 출력)
 		print(f"\n📊 [{args.date}] 처리 데이터 샘플 (상위 5건):")
 		df.show(5, truncate=False)
 
 		# 2. 저장
 		write_silver(df, "whale_txns")
+		
+		# 메모리 확보를 위해 캐시 해제
+		df.unpersist()
+		
 		logger.info(f"✅ [{args.date}] 고래 트랜잭션 처리 및 저장 완료")
 
 	except Exception as e:
