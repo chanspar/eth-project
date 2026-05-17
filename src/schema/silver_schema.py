@@ -42,13 +42,18 @@ whale_txn_schema = StructType([
 # Silver 레이어: token_flow 테이블 스키마
 token_flow_schema = StructType([
     StructField("transaction_hash", StringType(), True),
+    StructField("status", IntegerType(), True),
     StructField("block_timestamp", LongType(), True),
+    StructField("hour", IntegerType(), True),
     StructField("dt", DateType(), True),
     StructField("token_address", StringType(), True),
     StructField("symbol", StringType(), True),
+    StructField("token_name", StringType(), True),
     StructField("from_address", StringType(), True),
+    StructField("from_label", StringType(), True),
+    StructField("from_category", StringType(), True),
     StructField("to_address", StringType(), True),
-    StructField("value_normalized", DoubleType(), True),
-    StructField("from_dex", StringType(), True),
-    StructField("to_dex", StringType(), True)
+    StructField("to_label", StringType(), True),
+    StructField("to_category", StringType(), True),
+    StructField("amount", DoubleType(), True),
 ])
