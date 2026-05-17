@@ -2,7 +2,7 @@ from pyspark.sql import functions as F
 from pyspark.sql import SparkSession, DataFrame, Window
 from src.silver.spark_config import get_spark_session, read_silver
 from src.schema.silver_schema import whale_txn_schema
-from src.gold.utils import write_gold
+from src.gold.utils import write_gold, write_gold_to_bq
 from src.config import get_logger
 
 # 고래 티어 재산정 (당일 total_activity 기준으로 재분류)
@@ -169,6 +169,7 @@ def main():
     # 저장
     logger.info(f"Gold Layer에 데이터 저장 시작: {dt_val}")
     write_gold(top_whales, "top_whales_daily")
+    write_gold_to_bq(top_whales, "top_whales_daily")
     logger.info("데이터 저장 완료!")
     
     top_whales.show(20, truncate=False)

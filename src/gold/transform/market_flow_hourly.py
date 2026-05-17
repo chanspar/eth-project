@@ -2,19 +2,18 @@ from pyspark.sql import functions as F
 from pyspark.sql import SparkSession, DataFrame, Window
 from src.silver.spark_config import get_spark_session, read_silver
 from src.schema.silver_schema import whale_txn_schema
-from src.gold.utils import write_gold
+from src.gold.utils import write_gold, write_gold_to_bq
 from src.config import get_logger
 
 
 # flow_type → 시장 신호 매핑
 FLOW_SIGNAL_MAP = {
-    "CEX_Deposit":    "SELL_PRESSURE",    # 거래소 입금 → 매도 준비
-    "CEX_Withdrawal": "BUY_PRESSURE",     # 거래소 출금 → 셀프 커스터디 / 매수
-    "CEX_to_CEX":     "EXCHANGE_REBALANCE",
-    "DEX_Swap":       "DEX_TRADE",
-    "Bridge":         "BRIDGE_MOVE",
-    "Private":        "PRIVATE_MOVE",
-    "Internal":       "INTERNAL_MOVE",
+    "CEX_DEPOSIT":    "SELL_PRESSURE",    # 거래소 입금 → 매도 준비
+    "CEX_WITHDRAWAL": "BUY_PRESSURE",     # 거래소 출금 → 셀프 커스터디 / 매수
+    "DEX_TRADE":      "DEX_TRADE",
+    "BRIDGE_MOVE":    "BRIDGE_MOVE",
+    "PRIVATE_MOVE":   "PRIVATE_MOVE",
+    "OTHER":          "OTHER_MOVE",
 }
 
 
@@ -81,14 +80,14 @@ def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
     
     logger.info("거래소(CEX) 입출금 비율 기반 Market Pressure 지수 산출 중...")
     cex_pivot = (
-        df.filter(F.col("flow_type").isin("CEX_Deposit", "CEX_Withdrawal"))
+        df.filter(F.col("flow_type").isin("CEX_DEPOSIT", "CEX_WITHDRAWAL"))
         .groupBy("dt", "hour")
         .agg(
             F.round(
-                F.sum(F.when(F.col("flow_type") == "CEX_Deposit", F.col("value_eth")).otherwise(0)), 4
+                F.sum(F.when(F.col("flow_type") == "CEX_DEPOSIT", F.col("value_eth")).otherwise(0)), 4
             ).alias("cex_deposit_eth"),
             F.round(
-                F.sum(F.when(F.col("flow_type") == "CEX_Withdrawal", F.col("value_eth")).otherwise(0)), 4
+                F.sum(F.when(F.col("flow_type") == "CEX_WITHDRAWAL", F.col("value_eth")).otherwise(0)), 4
             ).alias("cex_withdrawal_eth"),
         )
         .withColumn(
@@ -161,6 +160,7 @@ def main():
     # 저장
     logger.info(f"Gold Layer에 데이터 저장 시작: {dt_val}")
     write_gold(flow_df, "market_flow_hourly")
+    write_gold_to_bq(flow_df, "market_flow_hourly")
     logger.info("데이터 저장 완료!")
     
     flow_df.show(48, truncate=False) # 24시간 * flow_types

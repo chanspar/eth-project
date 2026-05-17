@@ -15,6 +15,7 @@ BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 ALCHEMY_KEY = os.getenv("ALCHEMY_API_KEY")
 NETWORK     = os.getenv("ETHEREUM_NETWORK", "eth-mainnet")
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
+BQ_DATASET_ID = os.getenv("BQ_DATASET_ID")
 
 PROVIDER_URI = f"https://{NETWORK}.g.alchemy.com/v2/{ALCHEMY_KEY}"
 

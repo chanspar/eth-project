@@ -34,13 +34,13 @@ def get_spark_session(app_name: str):
             .config("spark.driver.bindAddress", "127.0.0.1")
             .config("spark.driver.host", "127.0.0.1")
             .config("spark.driver.memory", "4g")  # 4G로 증설하여 캐싱 시 GC Locker OOM 방지
-            # 로컬에서는 커넥터 JAR를 Maven에서 자동으로 관리
-            .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22")
+            # 로컬에서는 커넥터 JAR를 Maven에서 자동으로 관리 (GCS 커넥터 + BigQuery 커넥터)
+            .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22,com.google.cloud.spark:spark-4.0-bigquery:0.44.1")
         )
     else:
         print(f"🚀 Running in {env.upper()} mode (App: {app_name})")
-        # 운영 환경: 도커 이미지 내부에 설치된 JAR 파일 사용
-        builder = builder.config("spark.jars", "/opt/airflow/spark_jars/gcs-connector-hadoop3-shaded.jar")
+        # 운영 환경에서도 동일한 커넥터 조합 사용
+        builder = builder.config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22,com.google.cloud.spark:spark-4.0-bigquery:0.44.1")
 
     # 3. GCP Authentication & Project ID
     if gcp_key_path:
