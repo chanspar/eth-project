@@ -92,17 +92,21 @@ def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
         )
         .withColumn(
             # > 1 : 입금 우세 (매도 압력), < 1 : 출금 우세 (매수 압력)
+            # 분모(출금량)가 0인 경우 무한대 발산 및 평균 왜곡 방지를 위해 null(None) 처리
             "deposit_withdrawal_ratio",
-            F.round(
-                F.col("cex_deposit_eth") / F.when(
-                    F.col("cex_withdrawal_eth") == 0, F.lit(0.0001)
-                ).otherwise(F.col("cex_withdrawal_eth")),
-                4,
+            F.when(
+                F.col("cex_withdrawal_eth") == 0,
+                F.lit(None).cast("double")
+            ).otherwise(
+                F.round(F.col("cex_deposit_eth") / F.col("cex_withdrawal_eth"), 4)
             ),
         )
         .withColumn(
             "pressure_label",
-            F.when(F.col("deposit_withdrawal_ratio") > 1.5, "STRONG_SELL_PRESSURE")
+            F.when((F.col("cex_deposit_eth") == 0) & (F.col("cex_withdrawal_eth") == 0), "NEUTRAL")
+            .when((F.col("cex_withdrawal_eth") == 0) & (F.col("cex_deposit_eth") > 0), "STRONG_SELL_PRESSURE")
+            .when((F.col("cex_deposit_eth") == 0) & (F.col("cex_withdrawal_eth") > 0), "STRONG_BUY_PRESSURE")
+            .when(F.col("deposit_withdrawal_ratio") > 1.5, "STRONG_SELL_PRESSURE")
             .when(F.col("deposit_withdrawal_ratio") > 1.0, "MILD_SELL_PRESSURE")
             .when(F.col("deposit_withdrawal_ratio") < 0.67, "STRONG_BUY_PRESSURE")
             .when(F.col("deposit_withdrawal_ratio") < 1.0, "MILD_BUY_PRESSURE")
