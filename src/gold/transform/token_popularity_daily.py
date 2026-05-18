@@ -33,8 +33,12 @@ def build_token_popularity_daily(spark: SparkSession, dt: str) -> DataFrame:
     logger.info(f"[{dt}] token_popularity_daily 데이터 파이프라인 시작")
     
     # 1. 데이터 로드
-    logger.info(f"[{dt}] Silver Layer에서 'token_flow' 데이터 읽어오기 (status=1 필터링)")
+    logger.info(f"[{dt}] Silver Layer에서 'token_flow' 데이터 읽어오기")
     df = read_silver(spark, "token_flow", dt, schema=token_flow_schema)
+    
+    # 파티션 폴더를 직접 읽을 때 dt 컬럼이 null이 되는 현상 방지
+    date_str = dt.replace("dt=", "")
+    df = df.withColumn("dt", F.to_date(F.lit(date_str)))
     df = df.filter(F.col("status") == 1)
     
     # 2. 토큰별 기본 지표 집계
