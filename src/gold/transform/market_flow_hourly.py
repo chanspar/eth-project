@@ -114,8 +114,12 @@ def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
         )
     )
     
-    logger.info("기본 집계 데이터와 Market Pressure 지수 병합(Left Join) 중...")
-    final = agg.join(cex_pivot, on=["dt", "hour"], how="left")
+    logger.info("기본 집계 데이터와 Market Pressure 지수 병합(Left Join) 및 결측치 처리 중...")
+    final = (
+        agg.join(cex_pivot, on=["dt", "hour"], how="left")
+        .fillna(0.0, subset=["cex_deposit_eth", "cex_withdrawal_eth"])
+        .fillna("NEUTRAL", subset=["pressure_label"])
+    )
     
     
     output_cols = [
