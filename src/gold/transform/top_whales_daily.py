@@ -105,23 +105,39 @@ def build_top_whales_daily(spark: SparkSession, dt: str) -> DataFrame:
     
     
     logger.info("대표 Entity 매핑 보강 중...")
-    # from_entity 이름 보강: 해당 address의 from_entity 최빈값
+    # 보낸 주소(from_address)와 받는 주소(to_address) 측 라벨 정보를 모두 취합하여 주소별 대표 Entity를 결정합니다.
+    # (오직 수신만 한 지갑도 누락 없이 Unknown 혹은 라벨이 매핑되도록 보장)
+    from_entities = df.select(
+        F.col("from_address").alias("address"),
+        "dt",
+        F.col("from_entity").alias("entity_name"),
+        F.col("from_category").alias("entity_category")
+    ).filter(F.col("address").isNotNull())
+
+    to_entities = df.select(
+        F.col("to_address").alias("address"),
+        "dt",
+        F.col("to_entity").alias("entity_name"),
+        F.col("to_category").alias("entity_category")
+    ).filter(F.col("address").isNotNull())
+
+    combined_entities = from_entities.union(to_entities)
+
     entity_map = (
-        df.groupBy("from_address", "dt", "from_entity", "from_category")
+        combined_entities.groupBy("address", "dt", "entity_name", "entity_category")
         .agg(F.count("*").alias("_cnt"))
         .withColumn(
             "_rank",
             F.row_number().over(
-                Window.partitionBy("from_address", "dt").orderBy(F.col("_cnt").desc())
+                Window.partitionBy("address", "dt").orderBy(
+                    # Unknown보다는 구체적인 라벨이 우선하도록 정렬 보강
+                    F.when(F.col("entity_name") == "Unknown", 0).otherwise(1).desc(),
+                    F.col("_cnt").desc()
+                )
             ),
         )
         .filter(F.col("_rank") == 1)
-        .select(
-            F.col("from_address").alias("address"),
-            "dt",
-            F.col("from_entity").alias("entity_name"),
-            F.col("from_category").alias("entity_category"),
-        )
+        .select("address", "dt", "entity_name", "entity_category")
     )
 
     final = result.join(entity_map, on=["address", "dt"], how="left")
