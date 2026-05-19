@@ -87,25 +87,15 @@ uv run src/gold/transform/top_whales_daily.py --date 2026-05-01
 
 ## 3. Market Flow Hourly (시간별 시장 흐름 및 거래소 압력 분석)
 
-- **소스 코드 위치**: [market_flow_hourly.py](file:///c:/llm/eth-proj-v2/src/gold/transform/market_flow_hourly.py)
+- **소스 코드 위치**: [market_flow_hourly.py](../../src/gold/transform/market_flow_hourly.py)
 - **핵심 질문**: *"지금 이 시간 고래들이 거래소로 자금을 대량 입금하여 매도 압력을 높이고 있는가, 아니면 출금하여 매집하고 있는가?"*
 - **분석 단위**: `dt` + `hour` + `flow_type` (시간별 흐름 유형별 집계)
 
 ### 💡 핵심 변환 및 산출 로직
 
-1. **시장 신호(Market Signal) 맵핑**:
-   - 트랜잭션의 흐름 유형(`flow_type`)을 보다 직관적인 시장 해석 신호(`market_signal`)로 치환합니다.
-     - `CEX_DEPOSIT` ➡️ **SELL_PRESSURE** (거래소 입금 = 잠재적 매도 대기)
-     - `CEX_WITHDRAWAL` ➡️ **BUY_PRESSURE** (거래소 출금 = 매집 및 장기 보관)
-     - `DEX_TRADE` ➡️ **DEX_TRADE**
-     - `BRIDGE_MOVE` ➡️ **BRIDGE_MOVE**
-     - `PRIVATE_MOVE` ➡️ **PRIVATE_MOVE**
-     - `OTHER` ➡️ **OTHER_MOVE**
-2. **시간대별 기본 지표 집계**:
-   - `dt`, `hour`, `flow_type`, `market_signal` 단위로 그룹화하여 총 ETH 거래량, 총 트랜잭션 수, 고유 활성 고래 수, 평균 거래량, 최대 거래량, Humpback 거래 수 등을 계산합니다.
-3. **흐름 점유율 (Flow Share Pct)**:
-   - Window 함수(`Window.partitionBy("dt", "hour")`)를 통해 해당 시간대 전체 거래량(`hour_total_eth`) 대비 각 흐름 유형의 비율(`flow_share_pct`)을 계산합니다.
-4. **거래소 입출금 비율 기반 시장 압력 지수 (Market Pressure Index)**:
+1. **시간대별 기본 지표 집계**:
+   - `dt`, `hour`, `flow_type` 단위로 그룹화하여 총 ETH 거래량(`total_eth`)을 계산합니다.
+2. **거래소 입출금 비율 기반 시장 압력 지수 (Market Pressure Index)**:
    - 동일 시간대에 일어난 `CEX_DEPOSIT`과 `CEX_WITHDRAWAL` 총량을 피벗(Pivot)하여 비율을 도출합니다.
      - $\text{deposit\_withdrawal\_ratio} = \frac{\text{cex\_deposit\_eth}}{\text{cex\_withdrawal\_eth}}$
    - 해당 비율에 따라 매수/매도 압력 레이블(`pressure_label`)을 확정합니다.
@@ -122,20 +112,11 @@ uv run src/gold/transform/top_whales_daily.py --date 2026-05-01
 | **dt** | DATE | 기준 일자 | 파티션 컬럼 (`YYYY-MM-DD`) |
 | **hour** | INTEGER | 기준 시간 | 0 ~ 23시 |
 | **flow_type** | STRING | 자금 이동 유형 | `CEX_DEPOSIT`, `CEX_WITHDRAWAL`, `DEX_TRADE` 등 |
-| **market_signal** | STRING | 분석용 시장 신호 | `SELL_PRESSURE`, `BUY_PRESSURE`, `DEX_TRADE` 등 |
 | **total_eth** | DOUBLE | 해당 유형의 총 거래량 (ETH) | 소수점 4자리 반올림 |
-| **tx_count** | LONG | 트랜잭션 발생 횟수 | - |
-| **active_whale_count** | LONG | 활성 고래 수 | 고유 송신자 주소(`from_address`) 수 |
-| **avg_tx_eth** | DOUBLE | 트랜잭션당 평균 수량 (ETH) | 소수점 4자리 반올림 |
-| **max_single_tx_eth** | DOUBLE | 시간대 최대 단일 거래량 (ETH)| 소수점 4자리 반올림 |
-| **humpback_count** | LONG | 홉백 고래 트랜잭션 개수 | `whale_tier == 'Humpback'` 필터링 카운트 |
-| **flow_share_pct** | DOUBLE | 시간대 내 점유율 (%) | `total_eth / hour_total_eth * 100` |
-| **private_tx_ratio** | DOUBLE | 비공개 트랜잭션 비율 | `is_private_transaction` 비율 (0.0 ~ 1.0) |
 | **cex_deposit_eth** | DOUBLE | CEX 입금 총량 (ETH) | CEX로 유입된 거래량 총합 |
 | **cex_withdrawal_eth**| DOUBLE | CEX 출금 총량 (ETH) | CEX에서 유출된 거래량 총합 |
 | **deposit_withdrawal_ratio** | DOUBLE | 거래소 입출금 비율 | 입금량 / 출금량 (출금량이 0인 경우 무한대 발산 방지를 위해 null 처리) |
 | **pressure_label** | STRING | 거래소 압력 진단 | `STRONG_SELL_PRESSURE`, `STRONG_BUY_PRESSURE` 등 |
-| **hour_total_eth** | DOUBLE | 시간대 전체 흐름 총합 (ETH) | 해당 시간 발생한 모든 flow_type 거래량 합계 |
 
 > [!IMPORTANT]
 > `cex_deposit_eth`, `cex_withdrawal_eth`, `deposit_withdrawal_ratio`, `pressure_label` 지표는 시간대(`dt`, `hour`) 레벨에서 조인된 지표로, 동일한 시간 내의 모든 `flow_type` 레코드에 동일하게 복사되어 시간 단위 매크로 분석을 쉽게 만듭니다.

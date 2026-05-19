@@ -1,29 +1,9 @@
 from pyspark.sql import functions as F
-from pyspark.sql import SparkSession, DataFrame, Window
+from pyspark.sql import SparkSession, DataFrame
 from src.silver.spark_config import get_spark_session, read_silver
 from src.schema.silver_schema import whale_txn_schema
 from src.gold.utils import write_gold, write_gold_to_bq
 from src.config import get_logger
-
-
-# flow_type → 시장 신호 매핑
-FLOW_SIGNAL_MAP = {
-    "CEX_DEPOSIT":    "SELL_PRESSURE",    # 거래소 입금 → 매도 준비
-    "CEX_WITHDRAWAL": "BUY_PRESSURE",     # 거래소 출금 → 셀프 커스터디 / 매수
-    "DEX_TRADE":      "DEX_TRADE",
-    "BRIDGE_MOVE":    "BRIDGE_MOVE",
-    "PRIVATE_MOVE":   "PRIVATE_MOVE",
-    "OTHER":          "OTHER_MOVE",
-}
-
-
-def build_signal_expr() -> F.Column:
-    """flow_type → market_signal 컬럼 변환"""
-    expr = None
-    for flow, signal in FLOW_SIGNAL_MAP.items():
-        cond = F.when(F.col("flow_type") == flow, signal)
-        expr = cond if expr is None else expr.when(F.col("flow_type") == flow, signal)
-    return expr.otherwise("UNKNOWN")
 
 
 def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
@@ -43,38 +23,12 @@ def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
     
     date_str = dt.replace("dt=", "")
     df = df.withColumn("dt", F.to_date(F.lit(date_str)))
-    df = df.withColumn("market_signal", build_signal_expr())
     
-    logger.info("시간(hour) 및 flow_type 기준으로 1차 기본 집계 수행 중...")
+    logger.info("시간(hour) 및 flow_type 기준으로 기본 집계 수행 중...")
     agg = (
-        df.groupBy("dt", "hour", "flow_type", "market_signal")
+        df.groupBy("dt", "hour", "flow_type")
         .agg(
             F.round(F.sum("value_eth"), 4).alias("total_eth"),
-            F.count("hash").alias("tx_count"),
-            F.count_distinct("from_address").alias("active_whale_count"),
-            F.round(F.avg("value_eth"), 4).alias("avg_tx_eth"),
-            F.round(F.max("value_eth"), 4).alias("max_single_tx_eth"),
-            F.round(
-                F.sum(F.col("is_private_transaction").cast("int")) / F.count("hash"),
-                4,
-            ).alias("private_tx_ratio"),
-            F.sum(
-                F.when(F.col("whale_tier") == "Humpback", 1).otherwise(0)
-            ).alias("humpback_count"),
-
-        )
-    )
-    
-    logger.info("Window 함수를 활용하여 시간대별 흐름 점유율(Share Pct) 계산 중...")
-    window_hour = Window.partitionBy("dt", "hour")
-    agg = (
-        agg
-        .withColumn(
-            "hour_total_eth",
-            F.sum("total_eth").over(window_hour)
-        ).withColumn(
-            "flow_share_pct",
-            F.round(F.col("total_eth") / F.col("hour_total_eth") * 100, 2)
         )
     )
     
@@ -126,23 +80,12 @@ def build_market_flow_hourly(spark: SparkSession, dt: str) -> DataFrame:
         "dt",
         "hour",
         "flow_type",
-        "market_signal",
-        # 물량 지표
         "total_eth",
-        "tx_count",
-        "active_whale_count",
-        "avg_tx_eth",
-        "max_single_tx_eth",
-        "humpback_count",
-        # 비중 지표
-        "flow_share_pct",
-        "private_tx_ratio",
-        # CEX 압력 지수 (flow_type이 CEX인 행에만 유효)
+        # CEX 압력 지수
         "cex_deposit_eth",
         "cex_withdrawal_eth",
         "deposit_withdrawal_ratio",
         "pressure_label",
-        "hour_total_eth",
     ]
 
     logger.info("Market Flow Hourly 데이터프레임 구성 완료!")
