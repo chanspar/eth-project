@@ -52,7 +52,7 @@ def get_spark_session(app_name: str):
     return builder.getOrCreate()
 
 
-def read_bronze(spark: SparkSession, folder_name:str, dt:str, schema=None):
+def read_bronze(spark: SparkSession, folder_name:str, dt:str, schema):
     logger = get_logger(f"Read Bronze Layer {folder_name} / {dt}")
     spark.sparkContext.setLogLevel("ERROR")
     path = f"gs://{BUCKET_NAME}/{GCS_BRONZE_PREFIX}/{folder_name}/{dt}"
@@ -60,7 +60,7 @@ def read_bronze(spark: SparkSession, folder_name:str, dt:str, schema=None):
     return spark.read.schema(schema).json(path)
 
 
-def read_silver(spark: SparkSession, folder_name:str, dt: str, schema=None):
+def read_silver(spark: SparkSession, folder_name:str, dt: str, schema):
     logger = get_logger(f"Read Silver Layer {folder_name} / {dt}")
     spark.sparkContext.setLogLevel("ERROR")
     path = f"gs://{BUCKET_NAME}/{GCS_SILVER_PREFIX}/{folder_name}/{dt}"
