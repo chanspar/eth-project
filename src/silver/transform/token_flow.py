@@ -45,7 +45,7 @@ def build_token_flow(spark: SparkSession, dt: str):
 
     # 영수증(Receipts) 조인 및 성공한 트랜잭션만 필터링
     flow = flow.join(
-        F.broadcast(receipts_slim),
+        receipts_slim,
         on="transaction_hash",
         how="inner"
     ).filter(F.col("status") == 1)
@@ -62,15 +62,18 @@ def build_token_flow(spark: SparkSession, dt: str):
     )
 
     # 4. 주소 라벨링 (보낸 쪽/받는 쪽)
+    # 주소 라벨 데이터셋이 매우 작으므로(약 440KB) Broadcast Join을 적용하여 불필요한 셔플 방지
+    labels_bc = F.broadcast(address_labels)
+
     # 발신자 라벨
     flow = flow.join(
-        address_labels.selectExpr("address as from_address", "label_name as from_label", "label_category as from_category"),
+        labels_bc.selectExpr("address as from_address", "label_name as from_label", "label_category as from_category"),
         on="from_address", how="left"
     ).fillna({"from_label": "Unknown", "from_category": "Unknown"})
 
     # 수신자 라벨
     flow = flow.join(
-        address_labels.selectExpr("address as to_address", "label_name as to_label", "label_category as to_category"),
+        labels_bc.selectExpr("address as to_address", "label_name as to_label", "label_category as to_category"),
         on="to_address", how="left"
     ).fillna({"to_label": "Unknown", "to_category": "Unknown"})
 

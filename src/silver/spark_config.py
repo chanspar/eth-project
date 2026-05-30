@@ -1,5 +1,6 @@
 import os
 import src.schema.bronze_schema as bronze_schema
+import sys
 from pyspark.sql import SparkSession
 from src.config import BUCKET_NAME, get_logger, GCS_BRONZE_PREFIX, GCS_SILVER_PREFIX
 
@@ -12,7 +13,20 @@ def get_spark_session(app_name: str):
     gcp_key_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     gcp_project_id = os.getenv("GCP_PROJECT_ID")
 
+    if os.name == "nt":
+        # Clear environment variables to prevent Windows path propagation to executors
+        os.environ.pop("PYSPARK_PYTHON", None)
+        os.environ.pop("PYSPARK_DRIVER_PYTHON", None)
+
     builder = SparkSession.builder.appName(app_name)
+
+    if os.name == "nt":
+        # Linux executors (Docker) use python3, Windows host (Driver) uses the virtualenv python
+        builder = (
+            builder
+            .config("spark.pyspark.python", "python3")
+            .config("spark.pyspark.driver.python", sys.executable)
+        )
 
     # 1. Common GCS Connector Settings
     builder = (

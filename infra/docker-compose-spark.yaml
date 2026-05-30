@@ -1,0 +1,34 @@
+services:
+  spark-master:
+    image: apache/spark:4.0.2
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    ports:
+      - "8080:8080" # Master Web UI
+      - "7077:7077" # Master 통신 포트
+    volumes:
+      - ..:/llm/eth-proj-v2
+    networks:
+      - spark-network
+
+  spark-worker:
+    image: apache/spark:4.0.2
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_MEMORY=6g
+      - SPARK_WORKER_CORES=5
+    ports:
+      - "8081-8082:8081"
+    volumes:
+      - ..:/llm/eth-proj-v2
+    depends_on:
+      - spark-master
+    networks:
+      - spark-network
+
+networks:
+  spark-network:
+    driver: bridge
