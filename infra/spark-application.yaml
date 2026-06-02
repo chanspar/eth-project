@@ -1,0 +1,194 @@
+# ============================================================================
+# SparkApplication CRD (Custom Resource Definition)
+# - Spark Operator(sparkoperator.k8s.io)가 쿠버네티스 위에서 Spark 잡을 관리하기 위한 리소스
+# - kubectl apply -f spark-application.yaml 로 제출하면
+#   Spark Operator가 이 매니페스트를 읽고 Driver Pod → Executor Pod 를 자동 생성/관리
+# ============================================================================
+apiVersion: sparkoperator.k8s.io/v1beta2   # Spark Operator API 버전 (v1beta2가 현재 안정 버전)
+kind: SparkApplication                     # 리소스 종류: SparkApplication (Spark Operator 전용 CRD)
+
+# ── 메타데이터 ──────────────────────────────────────────────────────────────
+metadata:
+  name: eth-spark-job      # 이 SparkApplication의 이름 (kubectl get sparkapplication 에서 보이는 이름)
+  namespace: spark         # 배포될 쿠버네티스 네임스페이스 (spark 네임스페이스에 격리)
+
+# ── 스펙 (잡 설정 본체) ─────────────────────────────────────────────────────
+spec:
+  type: Python             # Spark 애플리케이션 언어 타입 (Java, Scala, Python, R 중 택1)
+  pythonVersion: "3"       # Python 메이저 버전 (Spark가 Python 3.x 인터프리터를 사용)
+  mode: cluster            # 실행 모드: cluster = Driver가 K8s Pod 안에서 실행
+                           #            client  = Driver가 제출한 머신에서 실행 (K8s에선 보통 cluster 모드 사용)
+
+  # ── 컨테이너 이미지 설정 ──────────────────────────────────────────────────
+  image: "192.168.34.3:5000/eth-project/spark-custom:latest"
+  # - 프라이빗 레지스트리(192.168.34.3:5000)에 푸시된 커스텀 Spark 이미지
+  # - 이 이미지 안에 Spark + Python 패키지 + GCS Connector JAR 등이 미리 빌드되어 있어야 함
+
+  imagePullPolicy: Always  # 항상 최신 이미지를 pull (개발 중에는 Always, 프로덕션에서는 IfNotPresent 권장)
+
+  # ── 메인 애플리케이션 파일 ────────────────────────────────────────────────
+  # local:// = 컨테이너 내부 파일 시스템 경로를 의미
+  # git-sync initContainer가 GitHub에서 코드를 /opt/spark/work-dir 에 clone해두므로
+  # 실제 실행될 PySpark 스크립트의 경로를 지정
+  mainApplicationFile: "local:///opt/spark/work-dir/src/jobs/spark_test_job.py"
+
+  # ── 재시작 정책 ──────────────────────────────────────────────────────────
+  restartPolicy:
+    type: Never            # 실패해도 재시작하지 않음 (OnFailure, Always 도 가능)
+                           # Airflow에서 재시도를 관리하므로 Never로 설정
+
+  # ── TTL (Time To Live) ───────────────────────────────────────────────────
+  timeToLiveSeconds: 300   # 잡 완료 후 300초(5분) 뒤에 Driver/Executor Pod 자동 삭제
+                           # 디버깅 시에는 늘려서 로그를 확인할 수 있음
+  
+  # ── 의존성 패키지 (Maven/PyPI) ───────────────────────────────────────────
+  # 도커 이미지에 패키지가 포함되어 있다면 필요 없음
+  # 이미지에 없는 JAR을 런타임에 다운로드하려면 아래 주석을 해제
+  # deps:
+  #   packages:
+  #     - "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22"   # GCS 파일시스템 커넥터
+  #     - "com.google.cloud.spark:spark-4.0-bigquery:0.44.1"           # BigQuery 커넥터
+
+  # ── Hadoop 설정 (GCS 연동용) ─────────────────────────────────────────────
+  # Spark가 gs:// 경로로 GCS 버킷을 읽고 쓸 수 있도록 Hadoop FileSystem 구현체를 지정
+  hadoopConf:
+    # GCS를 Hadoop FileSystem으로 인식시키는 구현 클래스
+    "fs.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem"
+    # AbstractFileSystem 레이어의 GCS 구현 (Spark SQL 등에서 필요)
+    "fs.AbstractFileSystem.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS"
+    # 서비스 계정 인증 활성화
+    "google.cloud.auth.service.account.enable": "true"
+    # 서비스 계정 JSON 키 파일 경로 (Pod 내부에 Secret으로 마운트됨)
+    "google.cloud.auth.service.account.json.keyfile": "/etc/secrets/gcp/gcp-key.json"
+  
+  # ── Spark 설정 ───────────────────────────────────────────────────────────
+  sparkConf:
+    "spark.ui.port": "4045"                                    # Spark UI 포트 (기본 4040 대신 4045 사용, 포트 충돌 방지)
+    "spark.sql.sources.partitionOverwriteMode": "dynamic"      # 파티션 덮어쓰기 시 해당 파티션만 교체 (전체 덮어쓰기 방지)
+    "spark.sql.session.timeZone": "UTC"                        # Spark SQL 타임존을 UTC로 통일 (블록체인 데이터 특성상 UTC 기준)
+    "spark.sql.shuffle.partitions": "16"                       # 셔플 시 파티션 수 (기본 200 → 16으로 줄여 소규모 데이터에 최적화)
+    "spark.kubernetes.driverEnv.PYTHONPATH": "/opt/spark/work-dir"   # Driver Pod의 PYTHONPATH (소스 코드 import 경로)
+    "spark.executorEnv.PYTHONPATH": "/opt/spark/work-dir"            # Executor Pod의 PYTHONPATH (동일하게 설정)
+  
+
+  # ── 볼륨 정의 (Driver/Executor Pod에서 공유) ──────────────────────────────
+  volumes:
+    # 1) git-sync가 GitHub에서 코드를 내려받을 임시 볼륨 (emptyDir)
+    #    - Pod 생명주기와 함께 생성/삭제되는 임시 디스크
+    - name: spark-code
+      emptyDir: {}
+
+    # 2) GCP 서비스 계정 키를 담은 K8s Secret
+    #    - 사전에 `kubectl create secret generic gcp-key --from-file=gcp-key.json -n spark` 으로 생성해둬야 함
+    - name: gcp-key
+      secret:
+        secretName: gcp-key
+  
+  # ============================================================================
+  # Driver 설정
+  # - Spark 잡의 "두뇌" 역할. DAG를 생성하고 Executor에 태스크를 분배
+  # - 1개의 Pod으로 실행됨
+  # ============================================================================
+  driver:
+    cores: 1               # Driver에 할당할 CPU 코어 수
+    memory: "3g"           # Driver에 할당할 메모리 (JVM 힙 + 오버헤드 포함)
+    serviceAccount: spark  # Driver Pod이 사용할 K8s ServiceAccount (RBAC 권한 필요)
+                           # Executor Pod 생성 권한 등이 이 SA에 부여되어야 함
+
+    # 이 Pod을 role=spark 라벨이 있는 노드에만 스케줄링
+    nodeSelector:
+      role: spark
+
+    # 환경 변수
+    env:
+      - name: PYTHONPATH
+        value: "/opt/spark/work-dir"   # Python import 경로 (git-sync가 여기에 코드를 clone)
+
+    # ── git-sync InitContainer ────────────────────────────────────────────
+    # InitContainer: 메인 컨테이너가 시작되기 전에 실행되는 "준비" 컨테이너
+    # 여기서는 GitHub 리포에서 최신 소스코드를 pull 해오는 역할
+    initContainers:
+      - name: git-sync-init
+        image: registry.k8s.io/git-sync/git-sync:v4.1.0   # 공식 git-sync 이미지
+        env:
+          - name: GITSYNC_REPO
+            value: "https://github.com/your-org/your-repo.git"  # ⚠️ 실제 GitHub 리포 URL로 변경 필요
+          - name: GITSYNC_BRANCH
+            value: "main"          # clone할 브랜치
+          - name: GITSYNC_ONE_TIME
+            value: "true"          # 한 번만 동기화 (true = initContainer용, false = sidecar용)
+          - name: GITSYNC_ROOT
+            value: "/git"          # git clone 루트 디렉토리
+          - name: GITSYNC_LINK
+            value: "current"       # /git/current → 실제 클론된 디렉토리의 심볼릭 링크
+        volumeMounts:
+          - name: spark-code
+            mountPath: /git        # emptyDir 볼륨을 /git에 마운트 → 여기에 코드가 clone됨
+
+    # ── Driver Pod 볼륨 마운트 ────────────────────────────────────────────
+    volumeMounts:
+      # git-sync가 clone한 코드를 Spark 작업 디렉토리로 마운트
+      - name: spark-code
+        mountPath: /opt/spark/work-dir
+      # GCP 서비스 계정 키를 읽기 전용으로 마운트
+      - name: gcp-key
+        mountPath: /etc/secrets/gcp
+        readOnly: true
+
+    # ── 환경 변수 시크릿 ──────────────────────────────────────────────────
+    # spark-env Secret에 저장된 모든 key=value 쌍을 환경 변수로 주입
+    # 예: ETHERSCAN_API_KEY, ALCHEMY_URL 등 민감 정보
+    envFrom:
+      - secretRef:
+          name: spark-env
+
+  # ============================================================================
+  # Executor 설정
+  # - 실제 데이터 처리를 수행하는 "일꾼" Pod
+  # - instances 만큼 Pod이 생성되어 병렬로 태스크 실행
+  # ============================================================================
+  executor:
+    cores: 1               # 각 Executor에 할당할 CPU 코어 수
+    instances: 1           # Executor Pod 개수 (스케일 아웃 시 이 값을 증가)
+    memory: "4g"           # 각 Executor에 할당할 메모리
+
+    # Driver와 동일한 노드에 스케줄링
+    nodeSelector:
+      role: spark
+
+    env:
+      - name: PYTHONPATH
+        value: "/opt/spark/work-dir"
+
+    # ── Executor도 동일하게 git-sync로 코드를 가져옴 ──────────────────────
+    # Driver와 Executor가 서로 다른 Pod이므로 각각 독립적으로 코드를 clone해야 함
+    initContainers:
+      - name: git-sync-init
+        image: registry.k8s.io/git-sync/git-sync:v4.1.0
+        env:
+          - name: GITSYNC_REPO
+            value: "https://github.com/your-org/your-repo.git"  # ⚠️ 실제 GitHub 리포 URL로 변경 필요
+          - name: GITSYNC_BRANCH
+            value: "main"
+          - name: GITSYNC_ONE_TIME
+            value: "true"
+          - name: GITSYNC_ROOT
+            value: "/git"
+          - name: GITSYNC_LINK
+            value: "current"
+        volumeMounts:
+          - name: spark-code
+            mountPath: /git
+
+    # ── Executor Pod 볼륨 마운트 (Driver와 동일) ──────────────────────────
+    volumeMounts:
+      - name: spark-code
+        mountPath: /opt/spark/work-dir
+      - name: gcp-key
+        mountPath: /etc/secrets/gcp
+        readOnly: true
+
+    # Executor에도 동일한 시크릿 환경 변수 주입
+    envFrom:
+      - secretRef:
+          name: spark-env
