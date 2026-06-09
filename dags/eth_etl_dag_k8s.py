@@ -21,7 +21,7 @@ default_args = {
 
 
 @dag(
-    dag_id="ethereum_etl_to_gcs",
+    dag_id="ethereum_etl_to_gcs_k8s",
     default_args=default_args,
     start_date=datetime(2026, 5, 1),
     schedule="0 1 * * *",  # 매일 오전 1시 실행
@@ -33,9 +33,9 @@ default_args = {
         interval=timedelta(hours=12),
         callback=AsyncCallback(task_fail_slack_alert),
     ),
-    tags=["ethereum", "etl", "gcs"],
+    tags=["ethereum", "etl", "gcs", "k8s"],
 )
-def ethereum_etl_dag():
+def ethereum_etl_k8s_dag():
 
     @task
     def calculate_block_range() -> dict:
@@ -56,31 +56,38 @@ def ethereum_etl_dag():
         }
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_blocks_and_transactions_task(range_data: dict) -> dict:
+    def extract_blocks_tx_and_receipts_task(range_data: dict) -> dict:
+        """블록, 트랜잭션, 고래 영수증을 하나의 파드(Pod) 내에서 연속으로 추출 (디스크 공유 및 GCS 업로드)"""
         import sys
         sys.path.append("/opt/airflow")
+        
         from src.storage.etl import export_blocks_and_transactions
-        result = export_blocks_and_transactions(
+        from src.storage.etl.receipts import export_receipts_and_logs
+        
+        # 1. 블록 & 트랜잭션 추출 (로컬 저장 후 GCS 업로드)
+        print(f"DEBUG: Starting blocks and transactions extraction for range: {range_data}")
+        blocks_stats = export_blocks_and_transactions(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
-        # Task SDK 로그에서 확인 가능한 디버깅 메시지
-        print(f"DEBUG: extract_blocks_and_transactions_task result: {result}")
-        return result
-
-    @task.external_python(python=ETH_ETL_PYTHON)
-    def export_receipts_task(tx_file: str, range_data: dict):
-        """영수증 및 로그 추출 (100 ETH 이상 고래 트랜잭션만)"""
-        import sys
-        sys.path.append("/opt/airflow")
-        from src.storage.etl.receipts import export_receipts_and_logs
-        return export_receipts_and_logs(
-            tx_file=tx_file,
+        print(f"DEBUG: export_blocks_and_transactions result: {blocks_stats}")
+        
+        # 2. 동일 로컬 디스크 상에 남겨진 tx_file을 읽어 영수증 및 로그 추출
+        # (완료 후 GCS 업로드하며, export_receipts_and_logs 내부 finally 블록에서 tx_file을 포함한 로컬 임시 파일들이 자동 정리됨)
+        print(f"DEBUG: Starting whale receipts extraction using local tx file: {blocks_stats['tx_file']}")
+        receipts_stats = export_receipts_and_logs(
+            tx_file=blocks_stats["tx_file"],
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"]
         )
+        print(f"DEBUG: export_receipts_and_logs result: {receipts_stats}")
+        
+        return {
+            "blocks_stats": blocks_stats,
+            "receipts_stats": receipts_stats
+        }
 
     @task.external_python(python=ETH_ETL_PYTHON)
     def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
@@ -95,21 +102,23 @@ def ethereum_etl_dag():
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
-        
-        # 2. 추출된 파일을 이용해 Contracts 추출 (선택 사항)
-        # if transfer_file:
-        #     export_contracts(transfer_file, range_data["start"], range_data["end"], range_data["date_str"])
 
 
     @task
-    def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
+    def quality_check_task(range_data: dict, extract_stats: dict) -> bool:
         """데이터 정합성(Whale Hash == Receipt count) 및 0바이트 파일 체크"""
         if range_data is None:
             raise AirflowFailException("❌ Quality Check Failed: 'range_data' is None.")
+        if extract_stats is None:
+            raise AirflowFailException("❌ Quality Check Failed: 'extract_stats' is None.")
+            
+        blocks_stats = extract_stats.get("blocks_stats")
+        receipts_stats = extract_stats.get("receipts_stats")
+        
         if blocks_stats is None:
-            raise AirflowFailException("❌ Quality Check Failed: 'blocks_stats' XCom을 찾을 수 없습니다. extract_blocks_and_transactions_task가 성공했는지 확인하세요.")
+            raise AirflowFailException("❌ Quality Check Failed: 'blocks_stats' XCom을 찾을 수 없습니다.")
         if receipts_stats is None:
-            raise AirflowFailException("❌ Quality Check Failed: 'receipts_stats' XCom을 찾을 수 없습니다. export_receipts_task가 성공했는지 확인하세요.")
+            raise AirflowFailException("❌ Quality Check Failed: 'receipts_stats' XCom을 찾을 수 없습니다.")
 
         date_str = range_data["date_str"]
         whale_count = receipts_stats.get("whale_count", 0)
@@ -117,9 +126,9 @@ def ethereum_etl_dag():
 
         # 0바이트 파일 체크
         zero_byte_files = []
-        if blocks_stats["tx_file_size"] == 0:
+        if blocks_stats.get("tx_file_size", 0) == 0:
             zero_byte_files.append("transactions")
-        if blocks_stats["block_file_size"] == 0:
+        if blocks_stats.get("block_file_size", 0) == 0:
             zero_byte_files.append("blocks")
 
         issues = []
@@ -137,10 +146,16 @@ def ethereum_etl_dag():
         return True
 
     @task
-    def send_summary_report(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> str:
+    def send_summary_report(range_data: dict, extract_stats: dict) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
-        if range_data is None or blocks_stats is None or receipts_stats is None:
+        if range_data is None or extract_stats is None:
             return "⚠️ Summary Report Skip: Missing input data (None)."
+            
+        blocks_stats = extract_stats.get("blocks_stats")
+        receipts_stats = extract_stats.get("receipts_stats")
+        
+        if blocks_stats is None or receipts_stats is None:
+            return "⚠️ Summary Report Skip: Missing blocks_stats or receipts_stats."
 
         context = get_current_context()
         dag_run = context["dag_run"]
@@ -171,7 +186,7 @@ def ethereum_etl_dag():
         est_gcs_cost_usd = (total_size_bytes / (1024**3)) * 0.02
 
         summary_msg = (
-            f"📊 **Ethereum ETL Success Report ({date_str})**\n"
+            f"📊 **Ethereum ETL Success Report (Kubernetes) ({date_str})**\n"
             f"• **Blocks**: {start_blk:,} ~ {end_blk:,} ({end_blk - start_blk + 1:,} blocks)\n"
             f"• **Total TX in Blocks**: {total_tx_in_blocks:,}\n"
             f"• **Whale TX (100+ ETH)**: {whale_count:,} receipts verified\n"
@@ -187,33 +202,27 @@ def ethereum_etl_dag():
     # 1. 블록 범위 계산
     range_info = calculate_block_range()
 
-    # 2. 블록/트랜잭션 추출
-    blocks_stats_arg = extract_blocks_and_transactions_task(range_info)
+    # 2. 블록/트랜잭션/영수증 통합 추출 (로컬 파일 전달 용이)
+    extract_stats_arg = extract_blocks_tx_and_receipts_task(range_info)
 
-    # 3. 영수증 추출 (100 ETH 이상 고래 트랜잭션만)
-    receipts_stats_arg = export_receipts_task(blocks_stats_arg["tx_file"], range_info)
-
-    # 4. 토큰 전송 추출
-    # ⚠️ Alchemy rate limit 방지를 위해 영수증 작업 완료 후 시작
+    # 3. 토큰 전송 추출
+    # ⚠️ Alchemy rate limit 방지를 위해 앞선 대용량 추출 작업 완료 후 시작
     transfers_arg = extract_token_transfers_and_contracts_task(range_info)
 
-    # 5. 정합성 검사 (Whale Hash == Receipt Count) 및 0바이트 파일 체크
+    # 4. 정합성 검사 (Whale Hash == Receipt Count) 및 0바이트 파일 체크
     qc = quality_check_task(
         range_data=range_info, 
-        blocks_stats=blocks_stats_arg, 
-        receipts_stats=receipts_stats_arg
+        extract_stats=extract_stats_arg
     )
 
-    # 6. 요약 리포트 전송
+    # 5. 요약 리포트 전송
     summary = send_summary_report(
         range_data=range_info, 
-        blocks_stats=blocks_stats_arg, 
-        receipts_stats=receipts_stats_arg
+        extract_stats=extract_stats_arg
     )
     
-    # 의존성: receipts → transfers → QC → summary
-    # (range → blocks → receipts 는 데이터 전달로 암시적 연결)
-    receipts_stats_arg >> transfers_arg >> qc >> summary
+    # 의존성: extract (blocks/tx/receipts) → transfers → QC → summary
+    extract_stats_arg >> transfers_arg >> qc >> summary
 
 
-ethereum_etl_dag()
+ethereum_etl_k8s_dag()

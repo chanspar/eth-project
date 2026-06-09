@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 
-from airflow.sdk import dag, task, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+from airflow.sdk import dag, task, get_current_context
 from airflow.sdk.exceptions import AirflowFailException
 
 from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
@@ -32,7 +32,7 @@ default_args = {
 )
 def ethereum_etl_test_dag():
 
-    @task
+    @task(task_id="caculate_block")
     def calculate_block_range() -> dict:
         """실행 날짜에 해당하는 블록 번호를 딱 10개만 계산 (테스트용)"""
         context = get_current_context()
@@ -53,7 +53,7 @@ def ethereum_etl_test_dag():
             "date_str": date_str,
         }
 
-    @task.external_python(python=ETH_ETL_PYTHON)
+    @task.external_python(task_id="extract_block_txns", python=ETH_ETL_PYTHON)
     def extract_blocks_and_transactions_task(range_data: dict) -> dict:
         import sys
         sys.path.append("/opt/airflow")
@@ -64,7 +64,7 @@ def ethereum_etl_test_dag():
             date_str=range_data["date_str"],
         )
 
-    @task.external_python(python=ETH_ETL_PYTHON)
+    @task.external_python(task_id="extract_receipts", python=ETH_ETL_PYTHON)
     def extract_receipts_and_logs_task(tx_file: str, range_data: dict) -> dict:
         import sys
         sys.path.append("/opt/airflow")
@@ -76,7 +76,7 @@ def ethereum_etl_test_dag():
             date_str=range_data["date_str"],
         )
 
-    @task.external_python(python=ETH_ETL_PYTHON)
+    @task.external_python(task_id="extract_token_transfer", python=ETH_ETL_PYTHON)
     def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
         import sys
         sys.path.append("/opt/airflow")
@@ -90,16 +90,16 @@ def ethereum_etl_test_dag():
         )
         
         # 2. 추출된 파일을 이용해 Contracts 추출
-        if transfer_file:
-            export_contracts(
-                transfer_file=transfer_file,
-                start=range_data["start"],
-                end=range_data["end"],
-                date_str=range_data["date_str"],
-            )
+        # if transfer_file:
+        #     export_contracts(
+        #         transfer_file=transfer_file,
+        #         start=range_data["start"],
+        #         end=range_data["end"],
+        #         date_str=range_data["date_str"],
+        #     )
 
-    @task
-    def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
+    @task(task_id="quality_chk")
+    def quality_check_task(range_data: dict, receipts_stats: dict) -> bool:
         date_str = range_data["date_str"]
         whale_count = receipts_stats.get("whale_count", 0)
         receipt_count = receipts_stats["receipt_count"]
@@ -116,7 +116,7 @@ def ethereum_etl_test_dag():
         return True
 
     @task
-    def send_summary_report(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> str:
+    def send_summary_report(range_data: dict, receipts_stats: dict) -> str:
         context = get_current_context()
         dag_run = context["dag_run"]
         date_str = range_data["date_str"]
@@ -125,10 +125,15 @@ def ethereum_etl_test_dag():
         duration = datetime.now(start_date.tzinfo) - start_date
         duration_str = str(duration).split(".")[0]
 
+        whale_count = receipts_stats.get("whale_count", 0)
+        receipt_size_mb = receipts_stats.get("receipt_file_size", 0) / (1024 * 1024)
+
         summary_msg = (
             f"🧪 Ethereum ETL TEST Success Report for {date_str}\n"
             f"• Duration: {duration_str}\n"
             f"• Block Range: {range_data['start']} ~ {range_data['end']} (10 Blocks)\n"
+            f"• Whale Receipts: {whale_count}건\n"
+            f"• Receipt Data Size: {receipt_size_mb:.2f} MB\n"
         )
         print(summary_msg)
         return summary_msg
@@ -140,10 +145,12 @@ def ethereum_etl_test_dag():
     receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
     
     # Token Transfers & Contracts (Merged)
-    extract_token_transfers_and_contracts_task(range_info)
+    # ⚠️ Alchemy rate limit 방지를 위해 receipts 완료 후 실행
+    transfers = extract_token_transfers_and_contracts_task(range_info)
 
-    qc = quality_check_task(range_info, blocks_stats, receipts_stats)
-    summary = send_summary_report(range_info, blocks_stats, receipts_stats)
-    summary << qc
+    qc = quality_check_task(range_info, receipts_stats)
+    summary = send_summary_report(range_info, receipts_stats)
+
+    receipts_stats >> transfers >> qc >> summary
 
 ethereum_etl_test_dag()
