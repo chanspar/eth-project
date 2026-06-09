@@ -1,0 +1,32 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication     # 스파크 오퍼레이터가 이해하는 작업 단위
+metadata:
+  name: spark-pi-test      # 이 스파크 작업의 이름
+  namespace: spark         # spark 방에서 실행
+spec:
+  type: Python             # 파이썬(PySpark) 기반 작업
+  pythonVersion: "3"       # 파이썬 버전 3 사용
+  mode: cluster            # 쿠버네티스 내부에서 대장(Driver)을 띄우는 클러스터 모드
+  image: "apache/spark-py:v3.4.0" # 사용할 스파크 공식 이미지
+  mainApplicationFile: "local:///opt/spark/examples/src/main/python/pi.py" # 실행할 내장 Pi 계산 스크립트 위치
+  sparkVersion: "3.4.0"    # 스파크 버전
+  restartPolicy:
+    type: Never            # 성공하든 실패하든 작업을 자동으로 다시 시작하지 않음
+
+  # [추가된 설정] 작업 완료(Completed 또는 Failed) 후 300초(5분) 뒤에 관련 포드와 자원을 자동 삭제
+  ttlSecondsAfterFinished: 300
+
+  driver:                  # 대장 포드(컴퓨팅 자원 요청)
+    cores: 1               # CPU 1코어 사용
+    memory: "512m"         # 메모리 512MB 사용
+    serviceAccount: spark  # 아까 만든 권한 사용
+    nodeSelector:
+      role: spark          # VM3 노드로 가라!
+
+  executor:                # 부하 포드 (실제 계산 수행)
+    cores: 1               # CPU 1코어 사용
+    instances: 1           # 부하 포드 딱 1개만 띄우기
+    memory: "512m"         # 메모리 512MB 사용
+    nodeSelector:
+      role: spark          # 너도 VM3 노드로 가라!
+  

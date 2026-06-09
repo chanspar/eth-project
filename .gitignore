@@ -224,5 +224,10 @@ gcp-key.json
 *.json
 !airflow_optimization_report.md
 
+# SSH Keys & Credentials
+id_rsa
+id_rsa.pub
+*.pem
+*.key
 
 logs

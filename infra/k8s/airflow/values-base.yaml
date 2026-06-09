@@ -1,0 +1,82 @@
+executor: KubernetesExecutor
+
+# 보통 원격 로그를 사용합니다.
+logs:
+  persistence:
+    enabled: false
+   
+# KubernetesExecutor 환경에선 Redis가 불필요하므로 비활성화
+redis:
+  enabled: false
+  
+# API 및 JWT 보안 키 고정
+apiSecretKeySecretName: airflow-api-secret
+jwtSecretName: airflow-jwt-secret
+
+
+config:
+  core:
+    load_examples: "False"
+    dags_are_paused_at_creation: "True"
+    # parallelism: "2" # task 최대 작업 수
+    # max_active_tasks_per_dag: "1" # 동시 작업 수
+  scheduler:
+    enable_health_check: "True"
+
+# k8s secret으로부터 공통 환경변수(.env에 정의된 값들) 주입
+extraEnvFrom: |-
+  - secretRef:
+      name: eth-project-env
+  - secretRef:
+      name: gcp-credentials-env
+      
+
+
+
+# GCP API 인증용 서비스 키를 각 컴포넌트 pod 내부에 Secret 형태로 마운트
+
+# apiServer gcp 권한 안주면 airflow에 로그 안나옴
+apiServer: 
+  extraVolumes:
+    - name: gcp-key
+      secret:
+        secretName: gcp-credentials
+  extraVolumeMounts:
+    - name: gcp-key
+      mountPath: /opt/airflow/gcp-key.json
+      subPath: gcp-key.json
+      readOnly: true
+
+
+scheduler:
+  extraVolumes:
+    - name: gcp-key
+      secret:
+        secretName: gcp-credentials
+  extraVolumeMounts:
+    - name: gcp-key
+      mountPath: /opt/airflow/gcp-key.json  # 1. 최종적으로 이 '파일 주소' 형태로 존재하게 만들 건데,
+      subPath: gcp-key.json                 # 2. 볼륨 박스 안에서 'gcp-key.json'이라는 알맹이만 쏙 빼서 꽂아라!
+      readOnly: true
+
+dagProcessor:
+  extraVolumes:
+    - name: gcp-key
+      secret:
+        secretName: gcp-credentials
+  extraVolumeMounts:
+    - name: gcp-key
+      mountPath: /opt/airflow/gcp-key.json
+      subPath: gcp-key.json
+      readOnly: true
+
+workers:
+  extraVolumes:
+    - name: gcp-key
+      secret:
+        secretName: gcp-credentials
+  extraVolumeMounts:
+    - name: gcp-key
+      mountPath: /opt/airflow/gcp-key.json
+      subPath: gcp-key.json
+      readOnly: true

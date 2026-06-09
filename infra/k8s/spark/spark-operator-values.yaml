@@ -1,0 +1,10 @@
+webhook:
+  enable: true          # ← 꼭 true (Pod 설정 자동 주입)
+
+spark:
+  jobNamespaces:
+    - spark             # ← Spark 잡 띄울 namespace 지정
+
+controller:
+  nodeSelector:
+    role: spark

@@ -1,0 +1,33 @@
+# Spark Operator 및 GCS 커넥터(Hadoop3 호환 JAR)와의 검증된 호환성 및 운영 안정성을 위해 v3.4.0 버전을 사용합니다.
+FROM apache/spark-py:v3.4.0
+
+USER root
+
+# ── 시스템 의존성 ──────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── GCS Connector JAR (Hadoop3 호환) ─────────────────
+# Spark Pod에서 gs:// 경로로 GCS 데이터를 읽고 쓰기 위해 필수
+RUN curl -fSL -o /opt/spark/jars/gcs-connector-hadoop3-2.2.22-shaded.jar \
+    https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/hadoop3-2.2.22/gcs-connector-hadoop3-2.2.22-shaded.jar
+
+# ── BigQuery Connector JAR (Spark 3.4 호환) ───────────
+# Spark Pod에서 BigQuery 테이블로 데이터를 직접 적재하기 위해 필수 (Gold 레이어용)
+RUN curl -fSL -o /opt/spark/jars/spark-3.4-bigquery-assembly-0.44.1.jar \
+    https://repo1.maven.org/maven2/com/google/cloud/spark/spark-3.4-bigquery/0.44.1/spark-3.4-bigquery-0.44.1.jar
+
+# ── Python 의존성 설치 ────────────────────────────────
+COPY requirements-spark.txt /tmp/requirements-spark.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-spark.txt && \
+    rm /tmp/requirements-spark.txt
+
+# ── src/ 및 PYTHONPATH는 런타임에 git-sync initContainer가 처리 ──
+# SparkApplication YAML의 initContainer가 GitHub에서 코드를 pull하고
+# PYTHONPATH는 SparkApplication spec의 sparkConf 또는 env에서 주입됩니다.
+
+# 보안을 위해 root가 아닌 일반 사용자
+USER 185

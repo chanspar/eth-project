@@ -1,0 +1,140 @@
+# ============================================================
+# values-local.yaml - Local K8s with Aiven External PostgreSQL
+# ============================================================
+
+# 내장 PostgreSQL 활성화 (로컬 DB 사용)
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      enabled: false
+
+# 외부 PostgreSQL 연결 비활성화
+# data:
+#   metadataSecretName: airflow-metadata-secret
+
+# Executor 설정
+executor: KubernetesExecutor
+
+# 로컬 Docker 이미지 사용
+defaultAirflowRepository: 192.168.34.3:5000/eth-project/airflow-custom
+defaultAirflowTag: "latest"
+
+images:
+  airflow:
+    pullPolicy: Always
+
+# ★ Airflow Pod들이 'role=airflow' 라벨을 가진 노드에만 배포되도록 강제
+nodeSelector:
+  role: airflow
+
+# PYTHONPATH 환경변수를 레포 경로로 설정 (Airflow 3/Git-sync 환경 대응)
+extraEnv: |-
+  - name: PYTHONPATH
+    value: /opt/airflow/dags/repo:/opt/airflow/dags/repo/dags
+
+dags:
+  gitSync:
+    enabled: true
+    branch: main
+    wait: 30
+    # ── 방법 1: SSH 방식 (권장, private repo면 필수) ──
+    repo: git@github.com:chanspar/eth-project.git  # ✅ SSH URL로 변경
+    sshKeySecret: airflow-ssh-git-secret
+
+    # ── 방법 2: HTTPS 방식 (public repo면 간단) ──
+    # repo: https://github.com/chanspar/eth-project.git
+    # sshKeySecret 줄 전체 삭제
+    knownHosts: |
+      github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+
+
+# Airflow 핵심 설정 (커넥션 절약을 위한 튜닝 및 Keepalive 추가)
+config:
+  core:
+    load_examples: "False"
+    dags_are_paused_at_creation: "True"
+    # Aiven 무료 티어 20개 커넥션 제한을 위한 튜닝
+    parallelism: "2"
+    max_active_tasks_per_dag: "1"
+    # SQLAlchemy의 커넥션 풀 크기 제한
+    sql_alchemy_conn_max_active: "5"
+  database:
+    # Aiven 클라우드 DB 연결 끊김 방지 (Keepalive 설정)
+    # Airflow 3에선 JSON 형식을 직접 지원하지 않으므로 주석 처리
+    # sql_alchemy_connect_args: '{"keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 5, "keepalives_count": 5}'
+  scheduler:
+    enable_health_check: "True"
+  logging:
+    remote_logging: "True"
+    remote_base_log_folder: "gs://chan-ethe-data/logs"
+    remote_log_conn_id: "google_cloud_default"  # 기본 GCP 커넥션 ID 사용
+
+
+# Webserver 리소스 설정
+# webserver:
+#   replicas: 1
+#   service:
+#     type: NodePort
+#   resources:
+#     requests: { cpu: "200m", memory: "256Mi" }
+#     limits:   { cpu: "500m", memory: "512Mi" }
+#   startupProbe:
+#     failureThreshold: 30
+
+apiServer:
+  resources:
+    requests: { cpu: "1000m", memory: "1.5Gi" }
+    limits:   { cpu: "2000m", memory: "2.5Gi" }
+  startupProbe:
+    failureThreshold: 30
+  livenessProbe:
+    timeoutSeconds: 60
+    failureThreshold: 30
+
+# Scheduler 리소스 설정
+scheduler:
+  replicas: 1
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }
+  startupProbe:
+    failureThreshold: 60  # 혹은 periodSeconds를 늘려 20초 타임아웃에 안 걸리게 유예 시간을 넉넉히 줍니다.
+  livenessProbe:
+    timeoutSeconds: 60
+    failureThreshold: 30
+
+# DAG Processor 리소스 설정
+dagProcessor:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }
+  livenessProbe:
+    initialDelaySeconds: 120   # 켜지고 나서 120초(2분) 동안은 헬스체크를 유예합니다 (startupProbe 대용)
+    periodSeconds: 60          # 60초마다 검사
+    timeoutSeconds: 60         # 응답 대기 시간을 60초로 넉넉하게 확장
+    failureThreshold: 6        # 6번 연속 실패해야 죽은 걸로 판정 (총 120초 더 대기)
+  # Airflow 3.x DAG Bundle 설정 (git-sync 경로 매핑)
+  dagBundleConfigList:
+    - name: dags-folder
+      classpath: "airflow.dag_processing.bundles.local.LocalDagBundle"
+      kwargs:
+        path: "/opt/airflow/dags/repo/dags"
+
+# Triggerer 리소스 설정
+triggerer:
+  enabled: false
+  persistence:
+    enabled: false
+  replicas: 1
+  resources:
+    requests: { cpu: "200m", memory: "256Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+
+# Worker Pod 기본 리소스 설정
+workers:
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "2Gi" }
