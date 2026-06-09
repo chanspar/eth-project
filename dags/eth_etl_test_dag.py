@@ -1,22 +1,22 @@
 import os
-from datetime import datetime, timedelta
+import pendulum
+from pendulum import datetime
+from typing import Any
 
 from airflow.sdk import dag, task, get_current_context
 from airflow.sdk.exceptions import AirflowFailException
 
-from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
-
 # pyrefly: ignore [missing-import]
+from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
 from src.storage.utils.block import get_block_number_by_date
 
 ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
-ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
 
 default_args = {
     "owner": "chanspar",
     "depends_on_past": False,
     "retries": 3,
-    "retry_delay": timedelta(minutes=3),
+    "retry_delay": pendulum.duration(minutes=3),
     "on_failure_callback": task_fail_slack_alert,
 }
 
@@ -35,13 +35,16 @@ def ethereum_etl_test_dag():
     @task(task_id="caculate_block")
     def calculate_block_range() -> dict:
         """실행 날짜에 해당하는 블록 번호를 딱 10개만 계산 (테스트용)"""
+        api_key = os.getenv("ETHERSCAN_API_KEY")
+        if not api_key:
+            raise AirflowFailException("❌ ETHERSCAN_API_KEY 환경변수가 설정되지 않았습니다.")
+
         context = get_current_context()
         logical_date = context["logical_date"]
 
         date_str = logical_date.strftime("%Y-%m-%d")
 
-        start_block = get_block_number_by_date(date_str, ETHERSCAN_API_KEY, "after")
-        
+        start_block = get_block_number_by_date(date_str, api_key)
         # 🧪 TEST: 블록 범위를 10개로 제한
         end_block = start_block + 9
 
@@ -54,7 +57,7 @@ def ethereum_etl_test_dag():
         }
 
     @task.external_python(task_id="extract_block_txns", python=ETH_ETL_PYTHON)
-    def extract_blocks_and_transactions_task(range_data: dict) -> dict:
+    def extract_blocks_and_transactions_task(range_data: Any) -> dict:
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_blocks_and_transactions
@@ -65,7 +68,7 @@ def ethereum_etl_test_dag():
         )
 
     @task.external_python(task_id="extract_receipts", python=ETH_ETL_PYTHON)
-    def extract_receipts_and_logs_task(tx_file: str, range_data: dict) -> dict:
+    def extract_receipts_and_logs_task(tx_file: Any, range_data: Any) -> dict:
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_receipts_and_logs
@@ -77,7 +80,7 @@ def ethereum_etl_test_dag():
         )
 
     @task.external_python(task_id="extract_token_transfer", python=ETH_ETL_PYTHON)
-    def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
+    def extract_token_transfers_and_contracts_task(range_data: Any) -> None:
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_token_transfers, export_contracts
@@ -99,7 +102,7 @@ def ethereum_etl_test_dag():
         #     )
 
     @task(task_id="quality_chk")
-    def quality_check_task(range_data: dict, receipts_stats: dict) -> bool:
+    def quality_check_task(range_data: Any, receipts_stats: Any) -> bool:
         date_str = range_data["date_str"]
         whale_count = receipts_stats.get("whale_count", 0)
         receipt_count = receipts_stats["receipt_count"]
@@ -116,21 +119,24 @@ def ethereum_etl_test_dag():
         return True
 
     @task
-    def send_summary_report(range_data: dict, receipts_stats: dict) -> str:
+    def send_summary_report(range_data: Any, receipts_stats: Any) -> str:
         context = get_current_context()
         dag_run = context["dag_run"]
         date_str = range_data["date_str"]
 
         start_date = dag_run.start_date
-        duration = datetime.now(start_date.tzinfo) - start_date
-        duration_str = str(duration).split(".")[0]
+        if start_date is not None:
+            elapsed = pendulum.now("UTC") - pendulum.instance(start_date)
+            elapsed_str = str(elapsed).split(".")[0]  # HH:MM:SS 형식
+        else:
+            elapsed_str = "N/A"
 
         whale_count = receipts_stats.get("whale_count", 0)
         receipt_size_mb = receipts_stats.get("receipt_file_size", 0) / (1024 * 1024)
 
         summary_msg = (
             f"🧪 Ethereum ETL TEST Success Report for {date_str}\n"
-            f"• Duration: {duration_str}\n"
+            f"• Duration: {elapsed_str}\n"
             f"• Block Range: {range_data['start']} ~ {range_data['end']} (10 Blocks)\n"
             f"• Whale Receipts: {whale_count}건\n"
             f"• Receipt Data Size: {receipt_size_mb:.2f} MB\n"
@@ -142,6 +148,7 @@ def ethereum_etl_test_dag():
 
     range_info = calculate_block_range()
     blocks_stats = extract_blocks_and_transactions_task(range_info)
+    # pyrefly: ignore [bad-index]
     receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
     
     # Token Transfers & Contracts (Merged)

@@ -1,9 +1,13 @@
 import os
-from datetime import datetime, timedelta
+import pendulum
+from pendulum import datetime
+from typing import Any
 
+# pyrefly: ignore [missing-module-attribute]
 from airflow.sdk import dag, task, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
 from airflow.sdk.exceptions import AirflowFailException
 
+# pyrefly: ignore [missing-import]
 from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
 
 from src.storage.utils.block import get_block_number_by_date
@@ -15,7 +19,7 @@ default_args = {
     "owner": "chanspar",
     "depends_on_past": True,
     "retries": 5,                             # 429 에러 대비 재시도 횟수 증가
-    "retry_delay": timedelta(minutes=3),      # 레이트 리밋이 풀릴 때까지 3분간 대기
+    "retry_delay": pendulum.duration(minutes=3),      # 레이트 리밋이 풀릴 때까지 3분간 대기
     "on_failure_callback": task_fail_slack_alert,
 }
 
@@ -30,7 +34,7 @@ default_args = {
     on_success_callback=task_succ_slack_alert,
     deadline=DeadlineAlert(
         reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
-        interval=timedelta(hours=12),
+        interval=pendulum.duration(hours=12),
         callback=AsyncCallback(task_fail_slack_alert),
     ),
     tags=["ethereum", "etl", "gcs"],
@@ -40,14 +44,18 @@ def ethereum_etl_dag():
     @task
     def calculate_block_range() -> dict:
         """실행 날짜에 해당하는 시작/종료 블록 번호 계산"""
+        api_key = os.getenv("ETHERSCAN_API_KEY")
+        if not api_key:
+            raise AirflowFailException("❌ ETHERSCAN_API_KEY 환경변수가 설정되지 않았습니다.")
+
         context = get_current_context()
         logical_date = context["logical_date"]
 
         date_str = logical_date.strftime("%Y-%m-%d")
-        next_date_str = (logical_date + timedelta(days=1)).strftime("%Y-%m-%d")
+        next_date_str = pendulum.instance(logical_date).add(days=1).strftime("%Y-%m-%d")
 
-        start_block = get_block_number_by_date(date_str, ETHERSCAN_API_KEY)
-        end_block = get_block_number_by_date(next_date_str, ETHERSCAN_API_KEY) - 1
+        start_block = get_block_number_by_date(date_str, api_key)
+        end_block = get_block_number_by_date(next_date_str, api_key) - 1
 
         return {
             "start": start_block,
@@ -56,7 +64,7 @@ def ethereum_etl_dag():
         }
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_blocks_and_transactions_task(range_data: dict) -> dict:
+    def extract_blocks_and_transactions_task(range_data: Any) -> dict:
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_blocks_and_transactions
@@ -70,7 +78,7 @@ def ethereum_etl_dag():
         return result
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def export_receipts_task(tx_file: str, range_data: dict):
+    def export_receipts_task(tx_file: str, range_data: Any) -> dict:
         """영수증 및 로그 추출 (100 ETH 이상 고래 트랜잭션만)"""
         import sys
         sys.path.append("/opt/airflow")
@@ -83,7 +91,7 @@ def ethereum_etl_dag():
         )
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_token_transfers_and_contracts_task(range_data: dict) -> None:
+    def extract_token_transfers_and_contracts_task(range_data: Any) -> None:
         """토큰 전송 내역 및 컨트랙트 추출"""
         import sys
         sys.path.append("/opt/airflow")
@@ -102,7 +110,7 @@ def ethereum_etl_dag():
 
 
     @task
-    def quality_check_task(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> bool:
+    def quality_check_task(range_data: Any, blocks_stats: Any, receipts_stats: Any) -> bool:
         """데이터 정합성(Whale Hash == Receipt count) 및 0바이트 파일 체크"""
         if range_data is None:
             raise AirflowFailException("❌ Quality Check Failed: 'range_data' is None.")
@@ -137,7 +145,7 @@ def ethereum_etl_dag():
         return True
 
     @task
-    def send_summary_report(range_data: dict, blocks_stats: dict, receipts_stats: dict) -> str:
+    def send_summary_report(range_data: Any, blocks_stats: Any, receipts_stats: Any) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
         if range_data is None or blocks_stats is None or receipts_stats is None:
             return "⚠️ Summary Report Skip: Missing input data (None)."
@@ -151,8 +159,12 @@ def ethereum_etl_dag():
 
         # 1. 소요 시간 계산
         start_date = dag_run.start_date
-        duration = datetime.now(start_date.tzinfo) - start_date
-        duration_str = str(duration).split(".")[0]  # HH:MM:SS 형식
+        start_date = dag_run.start_date
+        if start_date is not None:
+            elapsed = pendulum.now("UTC") - pendulum.instance(start_date)
+            elapsed_str = str(elapsed).split(".")[0]  # HH:MM:SS 형식
+        else:
+            elapsed_str = "N/A"
 
         # 2. 데이터 통계
         whale_count = receipts_stats.get("whale_count", 0)
@@ -175,7 +187,7 @@ def ethereum_etl_dag():
             f"• **Blocks**: {start_blk:,} ~ {end_blk:,} ({end_blk - start_blk + 1:,} blocks)\n"
             f"• **Total TX in Blocks**: {total_tx_in_blocks:,}\n"
             f"• **Whale TX (100+ ETH)**: {whale_count:,} receipts verified\n"
-            f"• **Duration**: {duration_str}\n"
+            f"• **Duration**: {elapsed_str}\n"
             f"• **Data Size**: {total_size_mb:.2f} MB\n"
             f"• **Alchemy Resources**: ~{est_alchemy_cu:,} CU consumed\n"
             f"• **Est. GCS Storage Cost**: ${est_gcs_cost_usd:.6f}"
@@ -191,6 +203,7 @@ def ethereum_etl_dag():
     blocks_stats_arg = extract_blocks_and_transactions_task(range_info)
 
     # 3. 영수증 추출 (100 ETH 이상 고래 트랜잭션만)
+    # pyrefly: ignore [bad-index]
     receipts_stats_arg = export_receipts_task(blocks_stats_arg["tx_file"], range_info)
 
     # 4. 토큰 전송 추출
