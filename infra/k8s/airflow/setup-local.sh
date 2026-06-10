@@ -21,7 +21,7 @@ kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f 
 # 2. 커스텀 Airflow 도커 이미지 로컬 빌드 및 worker1 전송
 echo "🔨 커스텀 Airflow 이미지 빌드 중..."
 docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} \
-  -f "$PROJECT_ROOT/infra/k8s/Dockerfile" "$PROJECT_ROOT"
+  -f "$PROJECT_ROOT/infra/k8s/airflow/Dockerfile" "$PROJECT_ROOT"
 
 echo "📡 로컬 레지스트리로 Push 중..."
 docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
@@ -66,8 +66,8 @@ helm repo update apache-airflow
 echo "⏳ Pod가 정상적으로 뜰 때까지 대기합니다 (최대 10분 소요)..."
 helm upgrade --install airflow apache-airflow/airflow \
   --namespace $NAMESPACE \
-  -f "$PROJECT_ROOT/infra/k8s/values-base.yaml" \
-  -f "$PROJECT_ROOT/infra/k8s/values-local.yaml" \
+  -f "$PROJECT_ROOT/infra/k8s/airflow/values-base.yaml" \
+  -f "$PROJECT_ROOT/infra/k8s/airflow/values-local.yaml" \
   --wait \
   --timeout 10m
 

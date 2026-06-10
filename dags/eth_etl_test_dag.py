@@ -56,28 +56,28 @@ def ethereum_etl_test_dag():
             "date_str": date_str,
         }
 
-    @task.external_python(task_id="extract_block_txns", python=ETH_ETL_PYTHON)
-    def extract_blocks_and_transactions_task(range_data: Any) -> dict:
+    @task.external_python(task_id="extract_blocks_tx_and_receipts", python=ETH_ETL_PYTHON)
+    def extract_blocks_tx_and_receipts_task(range_data: Any) -> dict:
         import sys
         sys.path.append("/opt/airflow")
         from src.storage.etl import export_blocks_and_transactions
-        return export_blocks_and_transactions(
+        from src.storage.etl.receipts import export_receipts_and_logs
+
+        # 1. 블록 & 트랜잭션 추출 (로컬 저장 후 GCS 업로드)
+        blocks_stats = export_blocks_and_transactions(
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
 
-    @task.external_python(task_id="extract_receipts", python=ETH_ETL_PYTHON)
-    def extract_receipts_and_logs_task(tx_file: Any, range_data: Any) -> dict:
-        import sys
-        sys.path.append("/opt/airflow")
-        from src.storage.etl import export_receipts_and_logs
-        return export_receipts_and_logs(
-            tx_file=tx_file,
+        # 2. 동일 로컬 디스크의 임시 tx_file을 읽어 영수증 및 로그 추출
+        receipts_stats = export_receipts_and_logs(
+            tx_file=blocks_stats["tx_file"],
             start=range_data["start"],
             end=range_data["end"],
             date_str=range_data["date_str"],
         )
+        return receipts_stats
 
     @task.external_python(task_id="extract_token_transfer", python=ETH_ETL_PYTHON)
     def extract_token_transfers_and_contracts_task(range_data: Any) -> None:
@@ -147,9 +147,7 @@ def ethereum_etl_test_dag():
     # ── Orchestration ──────────────────────────────────────────────────────────
 
     range_info = calculate_block_range()
-    blocks_stats = extract_blocks_and_transactions_task(range_info)
-    # pyrefly: ignore [bad-index]
-    receipts_stats = extract_receipts_and_logs_task(blocks_stats["tx_file"], range_info)
+    receipts_stats = extract_blocks_tx_and_receipts_task(range_info)
     
     # Token Transfers & Contracts (Merged)
     # ⚠️ Alchemy rate limit 방지를 위해 receipts 완료 후 실행
