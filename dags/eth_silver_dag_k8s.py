@@ -16,15 +16,11 @@ from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKu
 
 # pyrefly: ignore [missing-import]
 from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
+from utils.spark_spec import build_spark_spec, SPARK_NAMESPACE, K8S_CONN_ID
 
 # ── Asset 정의 ────────────────────────────────────────────────────────────────
 BRONZE_K8S_COMPLETE = Asset("bronze/ethereum_etl_k8s_complete")
 SILVER_K8S_COMPLETE = Asset("silver/ethereum_silver_complete")
-
-# ── SparkApplication 공통 설정 ─────────────────────────────────────────────────
-SPARK_IMAGE = "192.168.34.3:5000/eth-project/spark-custom:latest"
-SPARK_NAMESPACE = "spark"
-K8S_CONN_ID = "kubernetes_default"
 
 default_args = {
     "owner": "chanspar",
@@ -35,108 +31,7 @@ default_args = {
 }
 
 
-def _build_spark_spec(
-    app_name: str,
-    main_file: str,
-    arguments: list[str] | None = None,
-    driver_memory: str = "3g",
-    executor_memory: str = "4g",
-    executor_instances: int = 1,
-) -> dict:
-    """각 Silver transform 잡의 SparkApplication 스펙을 동적으로 생성합니다.
 
-    infra/spark-application.yaml 패턴을 따르되, 잡별로 mainApplicationFile 과
-    arguments 만 변경합니다. git-sync initContainer로 최신 코드를 클론합니다.
-    """
-    return {
-        "apiVersion": "sparkoperator.k8s.io/v1beta2",
-        "kind": "SparkApplication",
-        "metadata": {
-            "name": app_name,
-            "namespace": SPARK_NAMESPACE,
-        },
-        "spec": {
-            "type": "Python",
-            "pythonVersion": "3",
-            "mode": "cluster",
-            "image": SPARK_IMAGE,
-            "imagePullPolicy": "Always",
-            "mainApplicationFile": f"local:///opt/spark/work-dir/{main_file}",
-            "arguments": arguments or [],
-            "restartPolicy": {"type": "Never"},
-            "timeToLiveSeconds": 300,
-            "hadoopConf": {
-                "fs.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
-                "fs.AbstractFileSystem.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS",
-                "google.cloud.auth.service.account.enable": "true",
-                "google.cloud.auth.service.account.json.keyfile": "/etc/secrets/gcp/gcp-key.json",
-            },
-            "sparkConf": {
-                "spark.ui.port": "4045",
-                "spark.sql.sources.partitionOverwriteMode": "dynamic",
-                "spark.sql.session.timeZone": "UTC",
-                "spark.sql.shuffle.partitions": "16",
-                "spark.kubernetes.driverEnv.PYTHONPATH": "/opt/spark/work-dir",
-                "spark.executorEnv.PYTHONPATH": "/opt/spark/work-dir",
-            },
-            "volumes": [
-                {"name": "spark-code", "emptyDir": {}},
-                {"name": "gcp-key", "secret": {"secretName": "gcp-key"}},
-            ],
-            "driver": {
-                "cores": 1,
-                "memory": driver_memory,
-                "serviceAccount": "spark",
-                "nodeSelector": {"role": "spark"},
-                "env": [{"name": "PYTHONPATH", "value": "/opt/spark/work-dir"}],
-                "initContainers": [
-                    {
-                        "name": "git-sync-init",
-                        "image": "registry.k8s.io/git-sync/git-sync:v4.1.0",
-                        "env": [
-                            {"name": "GITSYNC_REPO", "value": "https://github.com/your-org/your-repo.git"},
-                            {"name": "GITSYNC_BRANCH", "value": "main"},
-                            {"name": "GITSYNC_ONE_TIME", "value": "true"},
-                            {"name": "GITSYNC_ROOT", "value": "/git"},
-                            {"name": "GITSYNC_LINK", "value": "current"},
-                        ],
-                        "volumeMounts": [{"name": "spark-code", "mountPath": "/git"}],
-                    }
-                ],
-                "volumeMounts": [
-                    {"name": "spark-code", "mountPath": "/opt/spark/work-dir"},
-                    {"name": "gcp-key", "mountPath": "/etc/secrets/gcp", "readOnly": True},
-                ],
-                "envFrom": [{"secretRef": {"name": "spark-env"}}],
-            },
-            "executor": {
-                "cores": 1,
-                "instances": executor_instances,
-                "memory": executor_memory,
-                "nodeSelector": {"role": "spark"},
-                "env": [{"name": "PYTHONPATH", "value": "/opt/spark/work-dir"}],
-                "initContainers": [
-                    {
-                        "name": "git-sync-init",
-                        "image": "registry.k8s.io/git-sync/git-sync:v4.1.0",
-                        "env": [
-                            {"name": "GITSYNC_REPO", "value": "https://github.com/your-org/your-repo.git"},
-                            {"name": "GITSYNC_BRANCH", "value": "main"},
-                            {"name": "GITSYNC_ONE_TIME", "value": "true"},
-                            {"name": "GITSYNC_ROOT", "value": "/git"},
-                            {"name": "GITSYNC_LINK", "value": "current"},
-                        ],
-                        "volumeMounts": [{"name": "spark-code", "mountPath": "/git"}],
-                    }
-                ],
-                "volumeMounts": [
-                    {"name": "spark-code", "mountPath": "/opt/spark/work-dir"},
-                    {"name": "gcp-key", "mountPath": "/etc/secrets/gcp", "readOnly": True},
-                ],
-                "envFrom": [{"secretRef": {"name": "spark-env"}}],
-            },
-        },
-    }
 
 
 @dag(
@@ -180,7 +75,7 @@ def ethereum_silver_k8s_dag():
     build_txn_enriched = SparkKubernetesOperator(
         task_id="build_txn_enriched",
         namespace=SPARK_NAMESPACE,
-        template_spec=_build_spark_spec(
+        template_spec=build_spark_spec(
             app_name="silver-txn-enriched-{{ ds_nodash }}",
             main_file="src/silver/transform/txn_enriched.py",
             arguments=["--date", "{{ ds }}"],
@@ -194,7 +89,7 @@ def ethereum_silver_k8s_dag():
     build_token_flow = SparkKubernetesOperator(
         task_id="build_token_flow",
         namespace=SPARK_NAMESPACE,
-        template_spec=_build_spark_spec(
+        template_spec=build_spark_spec(
             app_name="silver-token-flow-{{ ds_nodash }}",
             main_file="src/silver/transform/token_flow.py",
             arguments=["--date", "{{ ds }}"],
@@ -206,7 +101,7 @@ def ethereum_silver_k8s_dag():
     build_whale_txns = SparkKubernetesOperator(
         task_id="build_whale_txns",
         namespace=SPARK_NAMESPACE,
-        template_spec=_build_spark_spec(
+        template_spec=build_spark_spec(
             app_name="silver-whale-txns-{{ ds_nodash }}",
             main_file="src/silver/transform/whale_txns.py",
             arguments=["--date", "{{ ds }}", "--whale-threshold", "100.0"],
@@ -220,7 +115,7 @@ def ethereum_silver_k8s_dag():
     quality_check = SparkKubernetesOperator(
         task_id="quality_check",
         namespace=SPARK_NAMESPACE,
-        template_spec=_build_spark_spec(
+        template_spec=build_spark_spec(
             app_name="silver-quality-check-{{ ds_nodash }}",
             main_file="src/jobs/silver_quality_check_job.py",
             arguments=["--date", "{{ ds }}"],
