@@ -6,4 +6,3 @@ python-dotenv
 setuptools<70
 pendulum
 dill
-apache-airflow==3.2.1
