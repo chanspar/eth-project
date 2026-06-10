@@ -8,7 +8,7 @@ import pendulum
 from pendulum import datetime
 
 # pyrefly: ignore [missing-module-attribute]
-from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference, Metadata
 from airflow.sdk.exceptions import AirflowFailException
 
 # pyrefly: ignore [missing-import]
@@ -47,20 +47,34 @@ default_args = {
     tags=["ethereum", "silver", "spark", "local"],
 )
 def ethereum_silver_local_dag():
+    # ── 0단계: 실행 대상 날짜 결정 ────────────────────────────────────────────
+
+    @task
+    def get_execution_date() -> str:
+        """Bronze Asset 메타데이터에서 logical_date 추출, 없으면 본인의 logical_date 사용"""
+        context = get_current_context()
+        # Asset 트리거 시 메타데이터에서 날짜 추출
+        events = (context.get("triggering_asset_events") or {}).get(BRONZE_COMPLETE, [])
+        if events:
+            dt_str = events[0].extra.get("logical_date")
+            if dt_str:
+                print(f"🎯 Asset 트리거: logical_date={dt_str}")
+                return dt_str
+        # 수동 트리거 또는 Cron 스케줄
+        dt_str = context["logical_date"].strftime("%Y-%m-%d")
+        print(f"👤 수동/Cron 트리거: logical_date={dt_str}")
+        return dt_str
 
     # ── 1단계: Bronze → Silver 기초 가공 ──────────────────────────────────────
 
     @task
-    def build_txn_enriched_task():
+    def build_txn_enriched_task(dt_str: str):
         """Bronze → Silver: txn_enriched 가공 (LEFT JOIN 로직)"""
         from src.silver.transform.txn_enriched import build_txn_enriched
         from src.silver.spark_config import get_spark_session
         from src.silver.utils import write_silver
 
-        context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
         dt_partition = f"dt={dt_str}"
-
         spark = get_spark_session("Airflow-Build-Txn-Enriched")
         try:
             df = build_txn_enriched(spark, dt_partition)
@@ -71,16 +85,13 @@ def ethereum_silver_local_dag():
     # ── 2단계: Enriched 기반 파생 데이터 가공 (병렬 실행) ─────────────────────
 
     @task
-    def build_token_flow_task():
+    def build_token_flow_task(dt_str: str):
         """Bronze → Silver: token_flow 가공 (전수 전송 내역 확보)"""
         from src.silver.transform.token_flow import build_token_flow
         from src.silver.spark_config import get_spark_session
         from src.silver.utils import write_silver
 
-        context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
         dt_partition = f"dt={dt_str}"
-
         spark = get_spark_session("Airflow-Build-Token-Flow")
         try:
             df = build_token_flow(spark, dt_partition)
@@ -89,16 +100,13 @@ def ethereum_silver_local_dag():
             spark.stop()
 
     @task
-    def build_whale_txns_task():
+    def build_whale_txns_task(dt_str: str):
         """Silver Enriched → Silver Whale: 고래 자금 흐름 가공"""
         from src.silver.transform.whale_txns import build_whale_txns
         from src.silver.spark_config import get_spark_session
         from src.silver.utils import write_silver
 
-        context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
         dt_partition = f"dt={dt_str}"
-
         spark = get_spark_session("Airflow-Build-Whale-Txns")
         try:
             df = build_whale_txns(spark, dt_partition, threshold_eth=100.0)
@@ -108,48 +116,45 @@ def ethereum_silver_local_dag():
 
     # ── 3단계: 품질 체크 (3종 완전 검증) ──────────────────────────────────────
 
-    @task(outlets=[SILVER_COMPLETE])
-    def quality_check_task():
-        """Silver 3종 품질 체크 (txn_enriched + token_flow + whale_txns)
-
-        기존 DAG 대비 개선: whale_txns_check 추가 → 전체 Silver 레이어 검증 완료
-        """
+    @task
+    def quality_check_task(dt_str: str):
+        """Silver 3종 품질 체크 (txn_enriched + token_flow + whale_txns)"""
         from src.silver.check.txn_enriched_check import run_kpi_check
         from src.silver.check.token_flow_check import run_token_flow_kpi_check
         from src.silver.check.whale_txns_check import run_whale_kpi_check
         from src.silver.spark_config import get_spark_session
 
-        context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
-
         spark = get_spark_session("Airflow-Silver-Quality-Check")
         try:
-            # 1. 트랜잭션 유실 체크 (99% Retention)
             run_kpi_check(spark, dt_str)
-
-            # 2. 토큰 전송 유실 체크
             run_token_flow_kpi_check(spark, dt_str)
-
-            # 3. 고래 트랜잭션 품질 체크 (기존에 누락 — 신규 추가)
             run_whale_kpi_check(spark, dt_str)
         finally:
             spark.stop()
 
+    # ── 4단계: Silver 자산 이벤트 발행 ──────────────────────────────────────
+
+    @task(outlets=[SILVER_COMPLETE])
+    def publish_silver_asset(dt_str: str):
+        """Silver 레이어 가공 및 검증 완료 — Asset 이벤트 발행 (logical_date 메타데이터 포함)"""
+        print(f"✅ Silver 레이어 가공 완료 ({dt_str}). Gold DAG 트리거 준비.")
+        yield Metadata(SILVER_COMPLETE, {"logical_date": dt_str})
+
     # ── Task Wiring ───────────────────────────────────────────────────────────
 
-    # 1. 기초 데이터(Enriched) 생성
-    enriched = build_txn_enriched_task()
+    dt_str = get_execution_date()
 
-    # 2. Enriched 데이터를 바탕으로 토큰 흐름 및 고래 데이터 생성 (병렬)
-    token_flow = build_token_flow_task()
-    whale_txns = build_whale_txns_task()
+    enriched = build_txn_enriched_task(dt_str)
+    token_flow = build_token_flow_task(dt_str)
+    whale_txns = build_whale_txns_task(dt_str)
 
-    # 의존성: enriched가 끝나야 다음 두 작업 시작
     enriched >> [token_flow, whale_txns]
 
-    # 3. 모든 가공이 완료된 후 최종 품질 체크 수행
-    qc = quality_check_task()
+    qc = quality_check_task(dt_str)
     [token_flow, whale_txns] >> qc
+
+    publish = publish_silver_asset(dt_str)
+    qc >> publish
 
 
 ethereum_silver_local_dag()

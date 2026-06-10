@@ -6,7 +6,7 @@ from pendulum import datetime
 from typing import Any
 
 # pyrefly: ignore [missing-import, missing-module-attribute]
-from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference, Metadata
 # pyrefly: ignore [missing-import]
 from airflow.sdk.exceptions import AirflowFailException
 
@@ -179,7 +179,7 @@ def ethereum_etl_k8s_dag():
         print(f"✅ Quality Check Passed for {date_str}: {receipt_count} whale receipts verified.")
         return True
 
-    @task(outlets=[BRONZE_K8S_COMPLETE])
+    @task
     def send_summary_report(
         range_data: Any,
         extract_stats: Any,
@@ -277,8 +277,18 @@ def ethereum_etl_k8s_dag():
         transfers_stats=transfers_arg,
     )
 
-    # QC 통과 후 리포트 전송 (나머지 의존성은 TaskFlow 파라미터로 자동 설정)
-    qc >> summary
+    # 6. Bronze 자산 이벤트 발행 (logical_date 메타데이터 포함)
+    @task(outlets=[BRONZE_K8S_COMPLETE])
+    def publish_bronze_asset(range_data: Any):
+        """Bronze 레이어 처리 완료 — Asset 이벤트 발행 (logical_date 메타데이터 포함)"""
+        date_str = range_data["date_str"]
+        print(f"✅ Bronze K8s 처리 완료 ({date_str}). Silver DAG 트리거 준비.")
+        yield Metadata(BRONZE_K8S_COMPLETE, {"logical_date": date_str})
+
+    publish = publish_bronze_asset(range_info)
+
+    # QC 통과 후 리포트 전송 → 자산 발행
+    qc >> summary >> publish
 
 
 ethereum_etl_k8s_dag()

@@ -10,7 +10,7 @@ import pendulum
 from pendulum import datetime
 
 # pyrefly: ignore [missing-import, missing-module-attribute]
-from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference, Metadata
 # pyrefly: ignore [missing-import]
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 
@@ -159,9 +159,19 @@ def ethereum_silver_k8s_dag():
 
     @task
     def get_execution_date() -> str:
-        """logical_date를 문자열로 추출하여 SparkApplication arguments로 전달"""
+        """Bronze Asset 메타데이터에서 logical_date 추출, 없으면 본인의 logical_date 사용"""
         context = get_current_context()
-        return context["logical_date"].strftime("%Y-%m-%d")
+        # Asset 트리거 시 메타데이터에서 날짜 추출
+        events = (context.get("triggering_asset_events") or {}).get(BRONZE_K8S_COMPLETE, [])
+        if events:
+            dt_str = events[0].extra.get("logical_date")
+            if dt_str:
+                print(f"🎯 Asset 트리거: logical_date={dt_str}")
+                return dt_str
+        # 수동 트리거 또는 Cron 스케줄
+        dt_str = context["logical_date"].strftime("%Y-%m-%d")
+        print(f"👤 수동/Cron 트리거: logical_date={dt_str}")
+        return dt_str
 
     # ── 1단계: Bronze → Silver 기초 가공 ──────────────────────────────────────
 
@@ -223,9 +233,10 @@ def ethereum_silver_k8s_dag():
 
     # 품질 체크 완료 시 Silver Asset 발행 → Gold DAG 트리거
     @task(outlets=[SILVER_K8S_COMPLETE])
-    def publish_silver_asset():
-        """Silver 레이어 가공 및 검증 완료 — Asset 이벤트 발행"""
-        print("✅ Silver K8s 레이어 가공 및 품질 검증 완료. Gold DAG 트리거 준비.")
+    def publish_silver_asset(dt_str: str):
+        """Silver 레이어 가공 및 검증 완료 — Asset 이벤트 발행 (logical_date 메타데이터 포함)"""
+        print(f"✅ Silver K8s 레이어 가공 완료 ({dt_str}). Gold DAG 트리거 준비.")
+        yield Metadata(SILVER_K8S_COMPLETE, {"logical_date": dt_str})
 
     # ── Task Wiring ───────────────────────────────────────────────────────────
 
@@ -236,7 +247,7 @@ def ethereum_silver_k8s_dag():
     build_txn_enriched >> [build_token_flow, build_whale_txns]
 
     # [token_flow, whale_txns] → quality_check → publish_asset
-    [build_token_flow, build_whale_txns] >> quality_check >> publish_silver_asset()
+    [build_token_flow, build_whale_txns] >> quality_check >> publish_silver_asset(dt_str)
 
 
 ethereum_silver_k8s_dag()

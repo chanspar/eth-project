@@ -6,7 +6,7 @@ from pendulum import datetime
 from typing import Any
 
 # pyrefly: ignore [missing-import, missing-module-attribute]
-from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference, Metadata
 # pyrefly: ignore [missing-import]
 from airflow.sdk.exceptions import AirflowFailException
 
@@ -150,7 +150,7 @@ def ethereum_etl_dag():
         print(f"✅ Quality Check Passed for {date_str}: {receipt_count} whale receipts verified.")
         return True
 
-    @task(outlets=[BRONZE_COMPLETE])
+    @task
     def send_summary_report(range_data: Any, blocks_stats: Any, receipts_stats: Any) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
         if range_data is None or blocks_stats is None or receipts_stats is None:
@@ -230,9 +230,19 @@ def ethereum_etl_dag():
         receipts_stats=receipts_stats_arg
     )
     
-    # 의존성: receipts → transfers → QC → summary
+    # 7. Bronze 자산 이벤트 발행 (logical_date 메타데이터 포함)
+    @task(outlets=[BRONZE_COMPLETE])
+    def publish_bronze_asset(range_data: Any):
+        """Bronze 레이어 처리 완료 — Asset 이벤트 발행 (logical_date 메타데이터 포함)"""
+        date_str = range_data["date_str"]
+        print(f"✅ Bronze 처리 완료 ({date_str}). Silver DAG 트리거 준비.")
+        yield Metadata(BRONZE_COMPLETE, {"logical_date": date_str})
+
+    publish = publish_bronze_asset(range_info)
+
+    # 의존성: receipts → transfers → QC → summary → publish
     # (range → blocks → receipts 는 데이터 전달로 암시적 연결)
-    receipts_stats_arg >> transfers_arg >> qc >> summary
+    receipts_stats_arg >> transfers_arg >> qc >> summary >> publish
 
 
 ethereum_etl_dag()

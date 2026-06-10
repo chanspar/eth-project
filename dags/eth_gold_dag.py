@@ -7,6 +7,20 @@ from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
 # Silver DAG가 발행하는 데이터 자산 — ExternalTaskSensor 대체
 SILVER_COMPLETE = Asset("silver/ethereum_silver_complete")
 
+
+def _get_date_from_context() -> str:
+    """Silver Asset 메타데이터에서 logical_date 추출, 없으면 본인의 logical_date 사용"""
+    context = get_current_context()
+    events = (context.get("triggering_asset_events") or {}).get(SILVER_COMPLETE, [])
+    if events:
+        dt_str = events[0].extra.get("logical_date")
+        if dt_str:
+            print(f"🎯 Asset 트리거: logical_date={dt_str}")
+            return dt_str
+    dt_str = context["logical_date"].strftime("%Y-%m-%d")
+    print(f"👤 수동/Cron 트리거: logical_date={dt_str}")
+    return dt_str
+
 # 가상환경 및 Python 실행 경로
 ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
 
@@ -40,7 +54,7 @@ def ethereum_gold_dag():
         sys.path.append("/opt/airflow")
         
         context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
+        dt_str = _get_date_from_context()
         
         # subprocess를 사용하여 script 실행 (argparse 대응)
         cmd = [
@@ -59,7 +73,7 @@ def ethereum_gold_dag():
         sys.path.append("/opt/airflow")
         
         context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
+        dt_str = _get_date_from_context()
         
         cmd = [
             ETH_ETL_PYTHON, 
@@ -85,7 +99,7 @@ def ethereum_gold_dag():
         sys.path.append("/opt/airflow")
         
         context = get_current_context()
-        dt_str = context["logical_date"].strftime("%Y-%m-%d")
+        dt_str = _get_date_from_context()
         
         cmd = [
             ETH_ETL_PYTHON, 
