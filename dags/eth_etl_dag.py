@@ -1,10 +1,13 @@
 import os
+# pyrefly: ignore [missing-import]
 import pendulum
+# pyrefly: ignore [missing-import]
 from pendulum import datetime
 from typing import Any
 
-# pyrefly: ignore [missing-module-attribute]
-from airflow.sdk import dag, task, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+# pyrefly: ignore [missing-import, missing-module-attribute]
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+# pyrefly: ignore [missing-import]
 from airflow.sdk.exceptions import AirflowFailException
 
 # pyrefly: ignore [missing-import]
@@ -14,6 +17,9 @@ from src.storage.utils.block import get_block_number_by_date
 
 ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY")
+
+# Bronze DAG가 생산하는 데이터 자산 — Silver DAG의 Asset 기반 스케줄링 트리거용
+BRONZE_COMPLETE = Asset("bronze/ethereum_etl_complete")
 
 default_args = {
     "owner": "chanspar",
@@ -144,7 +150,7 @@ def ethereum_etl_dag():
         print(f"✅ Quality Check Passed for {date_str}: {receipt_count} whale receipts verified.")
         return True
 
-    @task
+    @task(outlets=[BRONZE_COMPLETE])
     def send_summary_report(range_data: Any, blocks_stats: Any, receipts_stats: Any) -> str:
         """작업 완료 리포트 및 소요 시간/비용 추정"""
         if range_data is None or blocks_stats is None or receipts_stats is None:

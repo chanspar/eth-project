@@ -1,9 +1,11 @@
 import os
 from datetime import datetime, timedelta
 
-from airflow.sdk import dag, task, get_current_context
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.sdk import dag, task, Asset, get_current_context
 from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
+
+# Silver DAG가 발행하는 데이터 자산 — ExternalTaskSensor 대체
+SILVER_COMPLETE = Asset("silver/ethereum_silver_complete")
 
 # 가상환경 및 Python 실행 경로
 ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
@@ -20,7 +22,9 @@ default_args = {
     dag_id="ethereum_gold_analysis",
     default_args=default_args,
     start_date=datetime(2026, 5, 1),
-    schedule="0 14 * * *",  # Silver(오후 12:30) 완료 후 오후 2:00 실행
+    # Asset 기반 스케줄링: Silver DAG 완료 시 즉시 트리거
+    # ExternalTaskSensor 대비 장점: 폴링 오버헤드 제거, 대기 시간 0
+    schedule=[SILVER_COMPLETE],
     catchup=True,
     max_active_runs=1,
     on_success_callback=task_succ_slack_alert,
@@ -91,17 +95,8 @@ def ethereum_gold_dag():
         subprocess.run(cmd, check=True, cwd="/opt/airflow")
 
     # ── Orchestration ──────────────────────────────────────────────────────────
-
-    # 0. Silver DAG 완료 대기
-    wait_for_silver = ExternalTaskSensor(
-        task_id="wait_for_silver_dag",
-        external_dag_id="ethereum_silver_transformation",
-        external_task_id="quality_check_task",
-        allowed_states=["success"],
-        poke_interval=300,
-        timeout=3600,
-        mode="reschedule",
-    )
+    # Asset 기반 스케줄링으로 ExternalTaskSensor 제거
+    # Silver DAG가 SILVER_COMPLETE Asset을 발행하면 이 DAG가 자동 트리거됨
 
     # 1. 고래 및 토큰 분석 (병렬 실행)
     whales = whale_analysis_task()
@@ -114,6 +109,6 @@ def ethereum_gold_dag():
     alerts = send_alerts_task()
 
     # 의존성 연결
-    wait_for_silver >> [whales, tokens] >> sync_bq >> alerts
+    [whales, tokens] >> sync_bq >> alerts
 
 ethereum_gold_dag()

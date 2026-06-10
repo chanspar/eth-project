@@ -3,7 +3,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType
 from src.silver.spark_config import read_bronze, get_spark_session, get_logger
 from src.silver.utils import write_silver
-from src.schema.bronze_schema import token_transfer_schema, block_schema, receipt_schema
+from src.schema.bronze_schema import token_transfer_schema, block_schema
 from src.silver.known_labels import load_token_meta_df, load_address_labels
 
 
@@ -15,7 +15,6 @@ def build_token_flow(spark: SparkSession, dt: str):
     # 1. 소스 데이터 로드 (contracts는 제외)
     transfers = read_bronze(spark, "token_transfers", dt, token_transfer_schema)
     blocks = read_bronze(spark, "blocks", dt, block_schema)
-    receipts = read_bronze(spark, "receipts", dt, receipt_schema)
     
     # 2. 마스터 데이터(Dimension) 로드
     token_meta = load_token_meta_df(spark)
@@ -25,11 +24,6 @@ def build_token_flow(spark: SparkSession, dt: str):
     blocks_slim = blocks.select(
         F.col("number").alias("block_number"),
         F.col("timestamp").alias("block_timestamp")
-    )
-
-    receipts_slim = receipts.select(
-        F.col("transaction_hash"),
-        F.col("status")
     )
 
     # 토큰 정보 조인 (Inner Join: 우리가 관리하는 주요 토큰들만 분석 대상)
@@ -43,12 +37,11 @@ def build_token_flow(spark: SparkSession, dt: str):
     # 블록 시간 조인
     flow = flow.join(F.broadcast(blocks_slim), on="block_number", how="left")
 
-    # 영수증(Receipts) 조인 및 성공한 트랜잭션만 필터링
-    flow = flow.join(
-        receipts_slim,
-        on="transaction_hash",
-        how="inner"
-    ).filter(F.col("status") == 1)
+    # [FIX] receipts 조인 제거
+    # Bronze 레이어의 receipts는 100 ETH 이상 고래 거래만 포함하므로,
+    # ERC-20 토큰 전송(ETH value = 0)과 inner join하면 결과가 비어버림.
+    # token_transfer 이벤트 로그는 성공한 트랜잭션에서만 emit되므로
+    # 별도의 status 검증이 불필요함.
 
     # 기초 인텔리전스 (시간, 수량 계산)
     flow = (
@@ -79,7 +72,7 @@ def build_token_flow(spark: SparkSession, dt: str):
 
     # 5. 최종 컬럼 선택
     final_cols = [
-        "transaction_hash", "status", "block_timestamp", "hour", "dt",
+        "transaction_hash", "block_timestamp", "hour", "dt",
         "token_address", "symbol", "token_name",
         "from_address", "from_label", "from_category",
         "to_address", "to_label", "to_category",

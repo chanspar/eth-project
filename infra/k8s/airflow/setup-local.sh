@@ -28,6 +28,16 @@ docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
 echo "✅ 이미지 Push 완료!"
 
 
+echo "🔍 워커 노드 라벨 검사 중 (role=airflow)..." 
+if ! kubectl get nodes -l role=airflow | grep -q "Ready"; then 
+  echo "❌ 'role=airflow' 라벨을 가진 노드를 찾을 수 없거나 노드가 Ready 상태가 아닙니다." 
+  echo "👉 파드가 Pending 상태에 빠지는 것을 방지하기 위해 스크립트를 중단합니다." 
+  echo "👉 실행 방법: kubectl label nodes <노드이름> role=airflow" 
+  exit 1 
+else 
+  echo "✅ 적합한 워커 노드가 존재합니다." 
+fi
+
 # 3. [신규] 필수 Secrets 존재 여부 확인 및 생성 안내
 echo "🔍 필수 Secrets 존재 여부 검사 중..."
 REQUIRED_SECRETS=("eth-project-env" "airflow-ssh-git-secret" "airflow-api-secret" "airflow-jwt-secret")
@@ -52,10 +62,13 @@ fi
 echo "📦 Airflow Helm 차트 배포 중..."
 helm repo add apache-airflow https://airflow.apache.org --force-update
 helm repo update apache-airflow
+
+echo "⏳ Pod가 정상적으로 뜰 때까지 대기합니다 (최대 10분 소요)..."
 helm upgrade --install airflow apache-airflow/airflow \
   --namespace $NAMESPACE \
   -f "$PROJECT_ROOT/infra/k8s/values-base.yaml" \
   -f "$PROJECT_ROOT/infra/k8s/values-local.yaml" \
+  --wait \
   --timeout 10m
 
 # 7. 상태 출력

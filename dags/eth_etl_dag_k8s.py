@@ -1,10 +1,13 @@
 import os
+# pyrefly: ignore [missing-import]
 import pendulum
+# pyrefly: ignore [missing-import]
 from pendulum import datetime
 from typing import Any
 
-# pyrefly: ignore [missing-module-attribute]
-from airflow.sdk import dag, task, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+# pyrefly: ignore [missing-import, missing-module-attribute]
+from airflow.sdk import dag, task, Asset, get_current_context, AsyncCallback, DeadlineAlert, DeadlineReference
+# pyrefly: ignore [missing-import]
 from airflow.sdk.exceptions import AirflowFailException
 
 # pyrefly: ignore [missing-import]
@@ -12,6 +15,9 @@ from utils.notifications import task_fail_slack_alert, task_succ_slack_alert
 from src.storage.utils.block import get_block_number_by_date
 
 ETH_ETL_PYTHON = "/opt/airflow/eth_etl_venv/bin/python"
+
+# Bronze K8s DAG가 생산하는 데이터 자산 — Silver K8s DAG의 Asset 기반 스케줄링 트리거용
+BRONZE_K8S_COMPLETE = Asset("bronze/ethereum_etl_k8s_complete")
 
 default_args = {
     "owner": "chanspar",
@@ -173,7 +179,7 @@ def ethereum_etl_k8s_dag():
         print(f"✅ Quality Check Passed for {date_str}: {receipt_count} whale receipts verified.")
         return True
 
-    @task
+    @task(outlets=[BRONZE_K8S_COMPLETE])
     def send_summary_report(
         range_data: Any,
         extract_stats: Any,
