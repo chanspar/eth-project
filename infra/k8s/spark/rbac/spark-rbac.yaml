@@ -1,20 +1,36 @@
-# spark-rbac.yaml
+# spark 잡 실행용 ServiceAccount
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: spark
   namespace: spark
 ---
+# Driver 파드가 Executor 파드를 생성/삭제하기 위한 권한
+# ClusterRoleBinding + edit 는 클러스터 전체 권한 → 과도함
+# spark 네임스페이스 안에서만 필요한 최소 권한으로 제한
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: Role
+metadata:
+  name: spark-role
+  namespace: spark
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
   name: spark-role-binding
+  namespace: spark
 subjects:
   - kind: ServiceAccount
     name: spark
     namespace: spark
 roleRef:
-  kind: ClusterRole
-  name: edit
+  kind: Role
+  name: spark-role
   apiGroup: rbac.authorization.k8s.io
-  

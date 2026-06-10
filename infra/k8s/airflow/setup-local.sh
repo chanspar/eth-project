@@ -68,7 +68,6 @@ helm upgrade --install airflow apache-airflow/airflow \
   --namespace $NAMESPACE \
   -f "$PROJECT_ROOT/infra/k8s/airflow/values-base.yaml" \
   -f "$PROJECT_ROOT/infra/k8s/airflow/values-local.yaml" \
-  --wait \
   --timeout 10m
 
 # 7. 상태 출력

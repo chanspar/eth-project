@@ -14,7 +14,7 @@ spec:
     type: Never            # 성공하든 실패하든 작업을 자동으로 다시 시작하지 않음
 
   # [추가된 설정] 작업 완료(Completed 또는 Failed) 후 300초(5분) 뒤에 관련 포드와 자원을 자동 삭제
-  ttlSecondsAfterFinished: 300
+  timeToLiveSeconds: 300
 
   driver:                  # 대장 포드(컴퓨팅 자원 요청)
     cores: 1               # CPU 1코어 사용
