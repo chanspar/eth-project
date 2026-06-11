@@ -29,7 +29,7 @@ default_args = {
 
 
 @dag(
-    dag_id="ethereum_etl_to_gcs_k8s",
+    dag_id="ethereum_etl_to_gcs_gke",
     default_args=default_args,
     start_date=datetime(2026, 6, 4, tz="Asia/Seoul"),
     schedule="10 9 * * *",  # 매일 오전 9시 10분 실행
