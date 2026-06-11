@@ -15,6 +15,7 @@ def get_block_number_by_date(date_str: str, api_key: str, closest: str = "after"
         if dt > now:
             logger.info(f"요청 시점({date_str})이 미래이므로 현재 시점({now.strftime('%Y-%m-%d %H:%M:%S')})으로 조정합니다.")
             timestamp = int(now.timestamp())
+            closest = "before"  # 현재 시점 이후로는 블록이 없으므로 '이전' 블록을 조회하도록 변경
 
         logger.info(f"Etherscan 블록 조회 시작 (Timestamp: {timestamp})")
         
@@ -33,7 +34,7 @@ def get_block_number_by_date(date_str: str, api_key: str, closest: str = "after"
             resp.raise_for_status()
             data = resp.json()
 
-        if data["status"] != "1":
+        if str(data.get("status")) != "1" or not str(data.get("result", "")).isdigit():
             # 만약 여전히 NOTOK가 난다면 (예: API 키 문제 등), 상세 메시지와 함께 예외 발생
             logger.error(f"Etherscan 응답 오류: {data.get('message')} | Result: {data.get('result')}")
             raise ValueError(f"Etherscan API 오류: {data.get('result', data.get('message'))}")
