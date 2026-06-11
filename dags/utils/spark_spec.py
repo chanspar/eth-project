@@ -44,8 +44,8 @@ def build_spark_spec(
     app_name: str,
     main_file: str,
     arguments: list[str] | None = None,
-    driver_memory: str = "3g",
-    executor_memory: str = "4g",
+    driver_memory: str = "1g",
+    executor_memory: str = "2g",
     executor_instances: int = 1,
     executor_cores: int = 1,
 ) -> dict:
