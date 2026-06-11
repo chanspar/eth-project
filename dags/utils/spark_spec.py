@@ -97,7 +97,7 @@ def build_spark_spec(
                 "fs.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
                 "fs.AbstractFileSystem.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS",
                 "google.cloud.auth.service.account.enable": "true",
-                "google.cloud.auth.service.account.json.keyfile": "/etc/secrets/gcp/gcp-key.json",
+                "google.cloud.auth.service.account.json.keyfile": "{{ '/etc/secrets/gcp/gcp-key.json' }}",
             },
             "sparkConf": {
                 "spark.ui.port": "4045",
