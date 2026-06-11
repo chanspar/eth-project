@@ -9,54 +9,54 @@ from src.config import BUCKET_NAME, get_logger, GCS_BRONZE_PREFIX, GCS_SILVER_PR
 WEI_PER_ETH = 1_000_000_000_000_000_000  # 1 ETH = 10^18 Wei
 
 def get_spark_session(app_name: str):
-    env = os.getenv("APP_ENV", "local").lower()
+    # K8s 파드 내부인지 자동 감지
+    if os.getenv("KUBERNETES_SERVICE_HOST"):
+        env = os.getenv("APP_ENV", "prod").lower()
+    else:
+        env = os.getenv("APP_ENV", "local").lower()
+        
+    builder = SparkSession.builder.appName(app_name)
+
+    if env == "prod":
+        print(f"🚀 Running in PROD (K8s) mode (App: {app_name})")
+        # K8s 환경에서는 Airflow(SparkKubernetesOperator)가 주입한 설정을 100% 존중합니다.
+        # 파이썬 코드 단에서 설정을 덮어씌우지 않고 순수하게 세션만 생성합니다.
+        return builder.getOrCreate()
+
+    # =========================================================================
+    # 아래는 오직 '로컬 환경(내 컴퓨터)'에서 실행할 때만 적용되는 설정입니다.
+    # =========================================================================
+    print(f"🔧 Running in LOCAL mode (App: {app_name})")
+    
     gcp_key_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     gcp_project_id = os.getenv("GCP_PROJECT_ID")
 
     if os.name == "nt":
-        # Clear environment variables to prevent Windows path propagation to executors
+        # 윈도우 환경 경로 꼬임 방지
         os.environ.pop("PYSPARK_PYTHON", None)
         os.environ.pop("PYSPARK_DRIVER_PYTHON", None)
-
-    builder = SparkSession.builder.appName(app_name)
-
-    if os.name == "nt":
-        # Linux executors (Docker) use python3, Windows host (Driver) uses the virtualenv python
         builder = (
             builder
             .config("spark.pyspark.python", "python3")
             .config("spark.pyspark.driver.python", sys.executable)
         )
 
-    # 1. Common GCS Connector Settings
     builder = (
         builder
+        .master("local[*]")
+        .config("spark.driver.bindAddress", "127.0.0.1")
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.memory", "4g")  # 4G로 증설하여 캐싱 시 GC Locker OOM 방지
+        .config("spark.sql.shuffle.partitions", "8")
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+        # GCS & BigQuery 커넥터 JAR (로컬 구동용)
+        .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22,com.google.cloud.spark:spark-4.0-bigquery:0.44.1")
         .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")
         .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
         .config("spark.hadoop.google.cloud.auth.service.account.enable", "true")
-        .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
-        .config("spark.sql.session.timeZone", "UTC")  # 타임존 UTC 고정
-        .config("spark.sql.shuffle.partitions", "8")
     )
 
-    # 2. Environment Specific Settings
-    if env == "local":
-        print(f"🔧 Running in LOCAL mode (App: {app_name})")
-        builder = (
-            builder
-            .master("local[*]")
-            .config("spark.driver.bindAddress", "127.0.0.1")
-            .config("spark.driver.host", "127.0.0.1")
-            .config("spark.driver.memory", "4g")  # 4G로 증설하여 캐싱 시 GC Locker OOM 방지
-            # 로컬에서는 커넥터 JAR를 Maven에서 자동으로 관리 (GCS 커넥터 + BigQuery 커넥터)
-            .config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22,com.google.cloud.spark:spark-4.0-bigquery:0.44.1")
-        )
-    else:
-        print(f"🚀 Running in {env.upper()} mode (App: {app_name})")
-        # 운영 환경에서도 동일한 커넥터 조합 사용
-        builder = builder.config("spark.jars.packages", "com.google.cloud.bigdataoss:gcs-connector:hadoop3-2.2.22,com.google.cloud.spark:spark-4.0-bigquery:0.44.1")
-
-    # 3. GCP Authentication & Project ID
     if gcp_key_path:
         builder = builder.config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", gcp_key_path)
     
