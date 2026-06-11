@@ -21,7 +21,7 @@ BRONZE_K8S_COMPLETE = Asset("bronze/ethereum_etl_k8s_complete")
 
 default_args = {
     "owner": "chanspar",
-    "depends_on_past": False,
+    "depends_on_past": True,                           # 과거 DAG Run이 성공해야 다음 날짜가 실행됨 (순차 실행 보장)
     "retries": 5,                                      # 429 에러 대비 재시도 횟수 증가
     "retry_delay": pendulum.duration(minutes=3),       # 레이트 리밋이 풀릴 때까지 3분간 대기
     "on_failure_callback": task_fail_slack_alert,
@@ -33,8 +33,8 @@ default_args = {
     default_args=default_args,
     start_date=datetime(2026, 6, 1, tz="Asia/Seoul"),
     schedule="10 9 * * *",  # 매일 오전 9시 10분 실행
-    catchup=False,
-    max_active_runs=1,
+    catchup=True,           # start_date(6월 1일)부터 현재까지 밀린 과거 잡들을 자동으로 예약
+    max_active_runs=1,      # 한 번에 하나의 날짜만 실행되도록 제한 (과부하 방지)
     on_success_callback=task_succ_slack_alert,
     deadline=DeadlineAlert(
         reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
