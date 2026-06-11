@@ -45,7 +45,6 @@ def build_token_popularity_daily(spark: SparkSession, dt: str) -> DataFrame:
     # 파티션 폴더를 직접 읽을 때 dt 컬럼이 null이 되는 현상 방지
     date_str = dt.replace("dt=", "")
     df = df.withColumn("dt", F.to_date(F.lit(date_str)))
-    df = df.filter(F.col("status") == 1)
     
     # 2. 토큰별 기본 지표 집계
     logger.info("토큰별 기본 집계(트랜잭션 수, 총 볼륨, 유니크 경로, CEX 순유입) 계산 중...")
