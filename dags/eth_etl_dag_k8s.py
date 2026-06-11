@@ -88,6 +88,11 @@ def ethereum_etl_k8s_dag():
         )
         print(f"DEBUG: export_blocks_and_transactions result: {blocks_stats}")
 
+        # [FIX] 두 API 호출 사이에 간격을 두어 Alchemy API Rate Limit(429) 방지
+        import time
+        print("DEBUG: Sleeping for 60 seconds to reset Alchemy API rate limits...")
+        time.sleep(60)
+
         # 2. 동일 로컬 디스크 상에 남겨진 tx_file을 읽어 영수증 및 로그 추출
         #    (완료 후 GCS 업로드하며, export_receipts_and_logs 내부 finally 블록에서
         #     tx_file을 포함한 로컬 임시 파일들이 자동 정리됨)

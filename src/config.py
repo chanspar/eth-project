@@ -21,7 +21,7 @@ PROVIDER_URI = f"https://{NETWORK}.g.alchemy.com/v2/{ALCHEMY_KEY}"
 
 # ── ETL 기본 옵션 ────────────────────────────────────────
 ETL_MAX_WORKERS = int(os.getenv("ETL_MAX_WORKERS", "1"))  # 429 에러 방지: 워커 수를 1로 제한
-ETL_BATCH_SIZE  = int(os.getenv("ETL_BATCH_SIZE", "5"))   # 500 CU/s 한도 내 속도 최적화: 배치 크기를 5로 설정
+ETL_BATCH_SIZE  = int(os.getenv("ETL_BATCH_SIZE", "2"))   # 330 CU/s 무료 티어 한도 고려: 배치 크기를 5 -> 2로 축소
 
 # ── GCS 경로 prefix ─────────────────────────────────────
 GCS_BRONZE_PREFIX = "bronze"
@@ -51,8 +51,10 @@ def validate_config() -> None:
 LOG_FILE = "etl_project.log"
 log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
 
+import sys
+
 # 콘솔 핸들러
-console_hdlr = logging.StreamHandler()
+console_hdlr = logging.StreamHandler(sys.stdout)
 console_hdlr.setFormatter(log_formatter)
 
 # 파일 핸들러

@@ -57,29 +57,35 @@ def export_receipts_and_logs(tx_file: str, start: int, end: int, date_str: str) 
         # 1. 해시 추출
         hash_file, whale_count = _extract_tx_hashes(tx_file)
 
-        # 2. 셸 명령어 실행
-        cmd = (
-            f"ethereumetl export_receipts_and_logs "
-            f"--transaction-hashes {hash_file} "
-            f"--provider-uri {PROVIDER_URI} "
-            f"--receipts-output {receipt_file} "
-            # f"--logs-output {log_file} "
-            f"--max-workers {ETL_MAX_WORKERS} --batch-size {ETL_BATCH_SIZE}"
-        )
-        run_shell(cmd)
+        if whale_count == 0:
+            logger.info("고래 트랜잭션이 없어 영수증 추출을 건너뜁니다.")
+            Path(receipt_file).touch()
+            receipt_count = 0
+            receipt_file_size = 0
+        else:
+            # 2. 셸 명령어 실행
+            cmd = (
+                f"ethereumetl export_receipts_and_logs "
+                f"--transaction-hashes {hash_file} "
+                f"--provider-uri {PROVIDER_URI} "
+                f"--receipts-output {receipt_file} "
+                # f"--logs-output {log_file} "
+                f"--max-workers {ETL_MAX_WORKERS} --batch-size {ETL_BATCH_SIZE}"
+            )
+            run_shell(cmd)
 
-        # 3. 파일 생성 검증
-        if not Path(receipt_file).exists(): # or not Path(log_file).exists():
-            raise FileNotFoundError("ethereumetl 실행 완료 후 영수증 파일이 정상적으로 생성되지 않았습니다.")
+            # 3. 파일 생성 검증
+            if not Path(receipt_file).exists(): # or not Path(log_file).exists():
+                raise FileNotFoundError("ethereumetl 실행 완료 후 영수증 파일이 정상적으로 생성되지 않았습니다.")
 
-        # --- KPI 수집 ---
-        receipt_count = 0
-        with open(receipt_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    receipt_count += 1
-        
-        receipt_file_size = Path(receipt_file).stat().st_size
+            # --- KPI 수집 ---
+            receipt_count = 0
+            with open(receipt_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        receipt_count += 1
+            
+            receipt_file_size = Path(receipt_file).stat().st_size
         # log_file_size = Path(log_file).stat().st_size
         # ----------------
 
