@@ -1,0 +1,105 @@
+# ============================================================
+# values-gke.yaml - GKE Autopilot optimized (No Node Selectors)
+# ============================================================
+
+# 내장 PostgreSQL 활성화 (간단한 테스트용)
+postgresql:
+  enabled: true
+  primary:
+    persistence:
+      enabled: false
+
+# Executor 설정
+executor: KubernetesExecutor
+
+# GKE용 Docker 이미지 사용 (GAR)
+# 아래 주소는 setup-gke.sh 에서 배포할 때 사용하는 주소와 일치해야 합니다.
+defaultAirflowRepository: asia-northeast3-docker.pkg.dev/my-eth-project-498908/eth-repo/airflow-custom
+defaultAirflowTag: "latest"
+
+images:
+  airflow:
+    pullPolicy: Always
+
+# ★ GKE Autopilot에서는 구글이 알아서 노드를 생성하므로, 
+# 기존 로컬 VM용으로 쓰던 nodeSelector를 제거합니다.
+# nodeSelector:
+#   role: airflow
+
+# PYTHONPATH 환경변수를 레포 경로로 설정 (Airflow 3/Git-sync 환경 대응)
+extraEnv: |-
+  - name: PYTHONPATH
+    value: /opt/airflow/dags/repo:/opt/airflow/dags/repo/dags
+
+dags:
+  gitSync:
+    enabled: true
+    branch: main
+    wait: 30
+    repo: git@github.com:chanspar/eth-project.git
+    sshKeySecret: airflow-ssh-git-secret
+    knownHosts: |
+      github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+
+# Airflow 핵심 설정
+config:
+  core:
+    load_examples: "False"
+    dags_are_paused_at_creation: "True"
+    parallelism: "2"
+    max_active_tasks_per_dag: "1"
+    sql_alchemy_conn_max_active: "5"
+  scheduler:
+    enable_health_check: "True"
+  logging:
+    remote_logging: "True"
+    remote_base_log_folder: "gs://chan-ethe-data/logs"
+    remote_log_conn_id: "google_cloud_default"
+
+apiServer:
+  service:
+    type: LoadBalancer
+  resources:
+    requests: { cpu: "1000m", memory: "1.5Gi" }
+    limits:   { cpu: "2000m", memory: "2.5Gi" }
+  startupProbe:
+    failureThreshold: 30
+  livenessProbe:
+    timeoutSeconds: 60
+    failureThreshold: 30
+
+scheduler:
+  replicas: 1
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }
+  startupProbe:
+    failureThreshold: 60
+  livenessProbe:
+    timeoutSeconds: 60
+    failureThreshold: 30
+
+dagProcessor:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }
+  livenessProbe:
+    initialDelaySeconds: 120
+    periodSeconds: 60
+    timeoutSeconds: 60
+    failureThreshold: 6
+  dagBundleConfigList:
+    - name: dags-folder
+      classpath: "airflow.dag_processing.bundles.local.LocalDagBundle"
+      kwargs:
+        path: "/opt/airflow/dags/repo/dags"
+
+triggerer:
+  enabled: false
+
+workers:
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits:   { cpu: "1000m", memory: "2Gi" }

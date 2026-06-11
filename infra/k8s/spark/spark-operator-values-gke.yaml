@@ -1,0 +1,11 @@
+webhook:
+  enable: true          # ← 꼭 true (Pod 설정 자동 주입)
+
+spark:
+  jobNamespaces:
+    - spark             # ← Spark 잡 띄울 namespace 지정
+
+# GKE Autopilot 환경에서는 nodeSelector를 제거합니다.
+# controller:
+#   nodeSelector:
+#     role: spark
