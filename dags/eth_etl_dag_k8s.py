@@ -111,7 +111,7 @@ def ethereum_etl_k8s_dag():
         }
 
     @task.external_python(python=ETH_ETL_PYTHON)
-    def extract_token_transfers_task(range_data: Any) -> str:
+    def extract_token_transfers_task(range_data: Any) -> dict:
         """토큰 전송 내역 추출
 
         [FIX] 함수명에서 '_and_contracts' 제거 — 컨트랙트 추출이 미구현 상태이므로

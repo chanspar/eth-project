@@ -7,7 +7,7 @@ from src.storage.utils.shell import run_shell, _cleanup
 # 로거 생성
 logger = get_logger(__name__)
 
-def export_token_transfers(start: int, end: int, date_str: str) -> str:
+def export_token_transfers(start: int, end: int, date_str: str) -> dict:
     """
     ERC20 / ERC721 토큰 전송 내역 추출 → GCS 업로드
     
@@ -37,7 +37,10 @@ def export_token_transfers(start: int, end: int, date_str: str) -> str:
         )
 
         logger.info(f"작업 성공: token_transfers 파일 보존 완료 ({transfer_file})")
-        return transfer_file  # 정상 완료 시에만 파일 경로 반환
+        return {
+            "transfer_file": transfer_file,
+            "transfer_file_size": Path(transfer_file).stat().st_size
+        }
 
     except Exception:
         logger.exception(f"Token Transfers 추출 및 업로드 중 오류 발생 ({start}~{end})")
