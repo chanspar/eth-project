@@ -1,8 +1,9 @@
 from pyspark.sql import SparkSession
 from pathlib import Path
 
-# 파일 경로 정의 (프로젝트 루트 기준)
-DATA_DIR = Path("src/data")
+# 파일 경로 정의 (현재 파일 위치 기반으로 절대 경로 계산)
+BASE_DIR = Path(__file__).resolve().parent.parent  # src 폴더
+DATA_DIR = BASE_DIR / "data"
 KNOWN_LABELS_PATH = DATA_DIR / "known_labels.parquet"
 TOKEN_META_PATH   = DATA_DIR / "top1000_erc20_tokens.parquet"
 
