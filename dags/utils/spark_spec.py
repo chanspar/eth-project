@@ -69,7 +69,6 @@ def build_spark_spec(
     # driver/executor 공통 파드 설정
     pod_common = {
         "nodeSelector": {"role": "spark"},
-        "env": [{"name": "PYTHONPATH", "value": "/opt/spark/work-dir/current"}],
         "initContainers": [_GIT_SYNC_INIT],
         "volumeMounts": _VOLUME_MOUNTS,
         "envFrom": [{"secretRef": {"name": "spark-env"}}],
