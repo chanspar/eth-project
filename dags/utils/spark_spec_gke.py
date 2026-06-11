@@ -91,12 +91,14 @@ def build_spark_spec(
             "volumes": _VOLUMES,
             "driver": {
                 "cores": 1,
+                "coreRequest": "250m",
                 "memory": driver_memory,
                 "serviceAccount": "spark",
                 **pod_common,
             },
             "executor": {
                 "cores": executor_cores,
+                "coreRequest": "500m",
                 "instances": executor_instances,
                 "memory": executor_memory,
                 **pod_common,
