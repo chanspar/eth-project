@@ -59,9 +59,9 @@ def ethereum_gold_k8s_dag():
         task_id="build_top_whales",
         namespace=SPARK_NAMESPACE,
         template_spec=build_spark_spec(
-            app_name="gold-top-whales-{{ ds_nodash }}",
+            app_name="gold-top-whales-{{ ti.xcom_pull(task_ids='get_execution_date') | replace('-', '') }}",
             main_file="src/gold/transform/top_whales_daily.py",
-            arguments=["--date", "{{ ds }}"],
+            arguments=["--date", "{{ ti.xcom_pull(task_ids='get_execution_date') }}"],
         ),
         kubernetes_conn_id=K8S_CONN_ID,
         get_logs=True,
@@ -71,9 +71,9 @@ def ethereum_gold_k8s_dag():
         task_id="build_token_popularity",
         namespace=SPARK_NAMESPACE,
         template_spec=build_spark_spec(
-            app_name="gold-token-pop-{{ ds_nodash }}",
+            app_name="gold-token-pop-{{ ti.xcom_pull(task_ids='get_execution_date') | replace('-', '') }}",
             main_file="src/gold/transform/token_popularity_daily.py",
-            arguments=["--date", "{{ ds }}"],
+            arguments=["--date", "{{ ti.xcom_pull(task_ids='get_execution_date') }}"],
         ),
         kubernetes_conn_id=K8S_CONN_ID,
         get_logs=True,
