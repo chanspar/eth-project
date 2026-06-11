@@ -20,7 +20,9 @@ def build_txn_enriched(spark: SparkSession, dt: str):
 
 	receipts_slim = receipts.select(
         F.col("transaction_hash"),
-        F.col("status")
+        F.col("status"),
+        F.col("gas_used").alias("receipt_gas_used"),
+        F.col("effective_gas_price")
     )
 
 	enriched = (
@@ -37,6 +39,15 @@ def build_txn_enriched(spark: SparkSession, dt: str):
             "is_success",
             F.col("status") == 1
         ).withColumn(
+            "tx_fee_eth",
+            ((F.col("receipt_gas_used") * F.col("effective_gas_price")).cast(DecimalType(38, 0)) / F.lit(WEI_PER_ETH)).cast(DecimalType(38, 18))
+        ).withColumn(
+            "is_contract_deploy",
+            F.col("to_address").isNull() | (F.col("to_address") == "")
+        ).withColumn(
+            "is_contract_call",
+            F.col("to_address").isNotNull() & (F.col("to_address") != "") & (F.col("input") != "0x")
+        ).withColumn(
             "dt",
             F.to_date(F.from_unixtime(F.col("block_timestamp")))
         )
@@ -45,7 +56,8 @@ def build_txn_enriched(spark: SparkSession, dt: str):
 	final_cols = [
 			"hash", "block_number", "block_timestamp",
 			"from_address", "to_address",
-			"value_eth", "is_success", "dt"
+			"value_eth", "tx_fee_eth",
+            "is_success", "is_contract_call", "is_contract_deploy", "dt"
 	]
 
 	logger.info(f"[build_txn_enriched] - [{dt}] 파생 컬럼 연산 완료")
