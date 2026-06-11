@@ -60,15 +60,28 @@ def ethereum_gold_test_dag():
         get_logs=True,
     )
 
+    build_market_flow = SparkKubernetesOperator(
+        task_id="test_build_market_flow_hourly",
+        namespace=SPARK_NAMESPACE,
+        template_spec=build_spark_spec(
+            app_name="test-gold-market-flow-{{ params.target_date | replace('-', '') }}",
+            main_file="src/gold/transform/market_flow_hourly.py",
+            arguments=["--date", "{{ params.target_date }}"],
+        ),
+        kubernetes_conn_id=K8S_CONN_ID,
+        get_logs=True,
+    )
+
     @task
     def report_results(dt: str):
         print("=" * 60)
         print(f"🎉 Gold 레이어 K8s 전체 테스트 통과! (대상 날짜: {dt})")
         print("   - top_whales_daily 변환 (K8s) ✅")
         print("   - token_popularity_daily 변환 (K8s) ✅")
+        print("   - market_flow_hourly 변환 (K8s) ✅")
         print("=" * 60)
 
-    dt_str >> [build_top_whales, build_token_pop]
-    [build_top_whales, build_token_pop] >> report_results(dt_str)
+    dt_str >> [build_top_whales, build_token_pop, build_market_flow]
+    [build_top_whales, build_token_pop, build_market_flow] >> report_results(dt_str)
 
 ethereum_gold_test_dag()

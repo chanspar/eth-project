@@ -79,6 +79,18 @@ def ethereum_gold_k8s_dag():
         get_logs=True,
     )
 
-    dt_str >> [build_top_whales, build_token_pop]
+    build_market_flow = SparkKubernetesOperator(
+        task_id="build_market_flow_hourly",
+        namespace=SPARK_NAMESPACE,
+        template_spec=build_spark_spec(
+            app_name="gold-market-flow-{{ ti.xcom_pull(task_ids='get_execution_date') | replace('-', '') }}",
+            main_file="src/gold/transform/market_flow_hourly.py",
+            arguments=["--date", "{{ ti.xcom_pull(task_ids='get_execution_date') }}"],
+        ),
+        kubernetes_conn_id=K8S_CONN_ID,
+        get_logs=True,
+    )
+
+    dt_str >> [build_top_whales, build_token_pop, build_market_flow]
 
 ethereum_gold_k8s_dag()

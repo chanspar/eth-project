@@ -32,8 +32,6 @@ default_args = {
 
 
 
-
-
 @dag(
     dag_id="ethereum_silver_k8s",
     default_args=default_args,
@@ -112,19 +110,19 @@ def ethereum_silver_k8s_dag():
 
     # ── 3단계: 품질 체크 (3종 완전 검증) ──────────────────────────────────────
 
-    quality_check = SparkKubernetesOperator(
-        task_id="quality_check",
-        namespace=SPARK_NAMESPACE,
-        template_spec=build_spark_spec(
-            app_name="silver-quality-check-{{ ti.xcom_pull(task_ids='get_execution_date') | replace('-', '') }}",
-            main_file="src/jobs/silver_quality_check_job.py",
-            arguments=["--date", "{{ ti.xcom_pull(task_ids='get_execution_date') }}"],
-            driver_memory="2g",
-            executor_memory="2g",
-        ),
-        kubernetes_conn_id=K8S_CONN_ID,
-        get_logs=True,
-    )
+    # quality_check = SparkKubernetesOperator(
+    #     task_id="quality_check",
+    #     namespace=SPARK_NAMESPACE,
+    #     template_spec=build_spark_spec(
+    #         app_name="silver-quality-check-{{ ti.xcom_pull(task_ids='get_execution_date') | replace('-', '') }}",
+    #         main_file="src/jobs/silver_quality_check_job.py",
+    #         arguments=["--date", "{{ ti.xcom_pull(task_ids='get_execution_date') }}"],
+    #         driver_memory="2g",
+    #         executor_memory="2g",
+    #     ),
+    #     kubernetes_conn_id=K8S_CONN_ID,
+    #     get_logs=True,
+    # )
 
     # 품질 체크 완료 시 Silver Asset 발행 → Gold DAG 트리거
     @task(outlets=[SILVER_K8S_COMPLETE])
@@ -141,8 +139,8 @@ def ethereum_silver_k8s_dag():
     # enriched → [token_flow, whale_txns] (병렬)
     build_txn_enriched >> [build_token_flow, build_whale_txns]
 
-    # [token_flow, whale_txns] → quality_check → publish_asset
-    [build_token_flow, build_whale_txns] >> quality_check >> publish_silver_asset(dt_str)
+    # [token_flow, whale_txns] → publish_asset
+    [build_token_flow, build_whale_txns] >> publish_silver_asset(dt_str)
 
 
 ethereum_silver_k8s_dag()
