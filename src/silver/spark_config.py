@@ -15,18 +15,19 @@ def get_spark_session(app_name: str):
     else:
         env = os.getenv("APP_ENV", "local").lower()
         
-    builder = SparkSession.builder.appName(app_name)
+    builder = SparkSession.builder
 
     if env == "prod":
-        print(f"🚀 Running in PROD (K8s) mode (App: {app_name})")
+        print(f"🚀 Running in PROD (K8s) mode")
         # K8s 환경에서는 Airflow(SparkKubernetesOperator)가 주입한 설정을 100% 존중합니다.
-        # 파이썬 코드 단에서 설정을 덮어씌우지 않고 순수하게 세션만 생성합니다.
+        # 앱 이름(appName)마저도 덮어쓰지 않고 K8s Operator가 지어준 이름을 그대로 사용합니다.
         return builder.getOrCreate()
 
     # =========================================================================
     # 아래는 오직 '로컬 환경(내 컴퓨터)'에서 실행할 때만 적용되는 설정입니다.
     # =========================================================================
     print(f"🔧 Running in LOCAL mode (App: {app_name})")
+    builder = builder.appName(app_name)
     
     gcp_key_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     gcp_project_id = os.getenv("GCP_PROJECT_ID")
