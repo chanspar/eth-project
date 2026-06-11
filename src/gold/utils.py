@@ -47,6 +47,7 @@ def write_gold_to_bq(df: DataFrame, table_name: str, partition_cols: list = None
             .option("table", bq_table)
             .option("temporaryGcsBucket", BUCKET_NAME)
             .option("partitionField", partition_cols[0])
+            .option("parentProject", PROJECT_ID)
             .mode("append")
             .save()
         )
