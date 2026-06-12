@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9094:9094" # 외부(로컬 PC의 ethereumetl) 접속용 포트를 9094로 매핑!
+    environment:
+      KAFKA_NODE_ID: 1 # KRaft 클러스터 내에서 이 노드를 식별하는 고유 ID
+      KAFKA_PROCESS_ROLES: broker,controller # combined mode
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093 # {node_id}@{host}:{port}형식으로 쿼럼투표자 목록 지정
+
+      # 컨테이너가 실제로 바인딩해서 듣는 소켓 목록입니다. `0.0.0.0`으로 모든 인터페이스에서 수신
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      # 도커 밖(로컬 PC의 ethereumetl)은 `localhost:9094`로 접속하라고 안내
+      # 도커 네트워크 내부의 다른 컨테이너(kafka-ui 등)는 `kafka:9092`로 접속하라고 안내
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+
+      # 위에서 우리가 지어낸 임의의 이름(PLAINTEXT, EXTERNAL, CONTROLLER)들이 실제로 어떤 보안 프로토콜을 사용하는지 매핑합니다. (여기선 전부 암호화 없는 생짜 텍스트 통신)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:SASL_SSL
+
+
+      # Controller들끼리 메타데이터 투표하고 수다 떨 때 사용할 통로 이름은 'CONTROLLER'(9093포트)라고 지정
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # 일꾼 브로커들끼리 서로 데이터 복제하고 수다 떨 때 사용할 통로 이름은 'PLAINTEXT'(9092포트)라고 지정
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # [중요] ethereumetl이 데이터를 쏠 때 토픽이 없으면 자동으로 생성해 주는 옵션
+      # 다만 Kafka 자체의 기본값도 `true`이기 때문에 사실 명시하지 않아도 동일하게 동작
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+
+      # 컨슈머가 "나 어디까지 읽었소"라고 기록하는 카프카 내부 전용 장부 토픽의 복제본(Replication) 개수입니다. 지금은 서버가 1대뿐이니 1로 설정해야 에러가 안 납니다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk' # # KRaft 모드가 부팅될 때 이 클러스터를 식별하기 위해 필요한 고유 UUID 문자열
+    volumes:
+      # # 컨테이너가 지워져도 수집한 이더리움 데이터는 날아가지 않게 내 PC 하드디스크와 연결
+      - kafka_data:/var/lib/kafka/data
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local # # 웹 화면 왼쪽 상단에 띄울 우리 카프카 클러스터의 대문 이름(닉네임)입니다.
+      # 내부 도커 네트워크 통신이므로 kafka:9092로 접근
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+
+volumes:
+  kafka_data:
