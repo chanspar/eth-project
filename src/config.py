@@ -54,7 +54,7 @@ log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(mess
 import sys
 
 # 콘솔 핸들러
-console_hdlr = logging.StreamHandler(sys.stdout)
+console_hdlr = logging.StreamHandler(sys.stderr)
 console_hdlr.setFormatter(log_formatter)
 
 # 파일 핸들러

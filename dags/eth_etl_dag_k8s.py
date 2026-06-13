@@ -56,10 +56,12 @@ def ethereum_etl_k8s_dag():
 
         context = get_current_context()
         logical_date = context["logical_date"]
+        # Airflow 3: logical_date는 스케줄 실행 시간이므로, 하루를 빼서 전일자(target_date)를 계산합니다.
+        target_date = pendulum.instance(logical_date).subtract(days=1)
 
-        date_str = logical_date.strftime("%Y-%m-%d")
+        date_str = target_date.strftime("%Y-%m-%d")
         # [FIX] pendulum.instance().add()로 DST-safe한 날짜 덧셈 적용
-        next_date_str = pendulum.instance(logical_date).add(days=1).strftime("%Y-%m-%d")
+        next_date_str = pendulum.instance(target_date).add(days=1).strftime("%Y-%m-%d")
 
         start_block = get_block_number_by_date(date_str, api_key)
         end_block = get_block_number_by_date(next_date_str, api_key) - 1
