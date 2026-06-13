@@ -31,7 +31,7 @@ default_args = {
 @dag(
     dag_id="ethereum_etl_to_gcs_k8s",
     default_args=default_args,
-    start_date=datetime(2026, 6, 10, tz="Asia/Seoul"),
+    start_date=datetime(2026, 6, 13, tz="Asia/Seoul"),
     schedule="10 9 * * *",  # 매일 오전 9시 10분 실행
     catchup=True,           # start_date(6월 1일)부터 현재까지 밀린 과거 잡들을 자동으로 예약
     max_active_runs=1,      # 한 번에 하나의 날짜만 실행되도록 제한 (과부하 방지)
