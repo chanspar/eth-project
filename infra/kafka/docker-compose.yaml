@@ -51,5 +51,28 @@ services:
     depends_on:
       - kafka
 
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: eth_data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   kafka_data:
+  postgres_data:
+  redis_data:
