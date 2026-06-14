@@ -47,3 +47,28 @@ CREATE INDEX idx_transactions_to_address ON transactions(to_address);
 CREATE INDEX idx_token_transfers_token_address ON token_transfers(token_address);
 CREATE INDEX idx_token_transfers_from_address ON token_transfers(from_address);
 CREATE INDEX idx_token_transfers_to_address ON token_transfers(to_address);
+
+-- ==========================================
+-- TimescaleDB Compression (운영 환경 데이터 압축)
+-- ==========================================
+
+-- 1. Transactions 압축 설정
+-- SegmentBy: 특정 지갑을 조회할 때 한 덩어리로 묶어서 가져올 수 있게 address 기준 묶음
+-- OrderBy: 시간 역순으로 최신 데이터부터 빠르게 압축 해제할 수 있게 정렬
+ALTER TABLE transactions SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'from_address',
+    timescaledb.compress_orderby = 'timestamp DESC'
+);
+
+-- 데이터가 쌓이고 7일이 지나면 백그라운드 워커가 자동으로 압축 (디스크 용량 90% 이상 절감)
+SELECT add_compression_policy('transactions', INTERVAL '7 days');
+
+-- 2. Token Transfers 압축 설정
+ALTER TABLE token_transfers SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'token_address',
+    timescaledb.compress_orderby = 'timestamp DESC'
+);
+
+SELECT add_compression_policy('token_transfers', INTERVAL '7 days');

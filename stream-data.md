@@ -49,3 +49,34 @@ eth-etl stream -> kafka -> consumer -> [postgres 확장버전(timescaleDB),redis
 - 참고: psycopg2의 ThreadedConnectionPool은 보통 늘어난 Connection을 자동으로 축소하지 않는다.
 
 
+
+### token & transfer에는 timestamp가 없다?
+- 블록 시간 테이블(blocks)을 따로 캐싱
+
+
+## 엔드투엔드(End-to-End) 파이프라인 통합 테스트 
+1. cd infra/kafka ; make up (만약 make가 안되면 docker-compose up -d 실행)
+2. uv run src/consumer/main.py
+3. docker build -t eth-etl-stream -f Dockerfile.etl .
+docker run --rm --network host eth-etl-stream
+
+## 트러블슈팅 및 운영 최적화 노트
+
+### 1. `ethereum-etl` stream 구동 시 빈 블록 폭주 이슈
+- **원인**: `--start-block`을 지정하지 않고 `last_synced_block.txt`도 없을 경우, `ethereum-etl`은 이더리움 제네시스 블록(0번)부터 수집을 시작함. 0~4.6만 번 블록은 트랜잭션이 하나도 없는 빈 블록이므로, 실행 즉시 `blocks` 토픽에만 수천 개의 빈 블록이 쌓이고 `transactions` 등은 0개가 됨.
+- **해결**: `run_stream.py` 실행 시 Alchemy 노드에 `eth_blockNumber` RPC 요청을 보내 **현재 실시간 최신 블록 번호**를 알아낸 뒤, `--start-block` 파라미터로 자동 주입하도록 수정.
+
+### 2. Kafka Topic 이름 복수형(Plural) 자동 변환 이슈
+- **원인**: `ethereum-etl` 실행 시 `--entity-types block,transaction...` 과 같이 단수형으로 입력해도, 내부 Kafka Exporter는 자동으로 끝에 `s`를 붙여서 `blocks`, `transactions`, `token_transfers` 등 복수형 토픽으로 퍼블리싱함.
+- **해결**: 컨슈머가 구독하는 토픽명과 `Makefile`의 토픽 생성 스크립트를 모두 복수형으로 맞춤. 또한 불필요하게 가공 전 날것의 로그가 `logs` 토픽에 쌓이는 것을 막기 위해 `--entity-types`에서 `log`를 제거 (토큰 전송은 내부적으로 알아서 파싱됨).
+
+### 3. Redis TTL (만료 시간) 최적화
+- **이슈**: 블록 타임스탬프를 보관하는 레디스 키의 TTL이 1일(86400초)로 과도하게 설정되어 있어 불필요한 메모리 낭비 발생.
+- **해결**: 카프카 파티션 처리 딜레이를 고려하더라도 수 분이면 블록/토큰 전송 처리가 끝나므로, TTL을 10분(600초)으로 대폭 축소하여 메모리 누수 방지.
+
+### 4. TimescaleDB 데이터 압축 (Compression) 정책 적용
+- **이슈**: 하루 수백만 건(약 3GB)씩 쌓이는 시계열 데이터를 그대로 방치하면 스토리지 유지 비용이 기하급수적으로 증가함.
+- **해결**: 
+  - `transactions`와 `token_transfers` 테이블에 대해 `timescaledb.compress` 활성화.
+  - 검색 성능을 위해 `segmentby`를 지갑 주소(`from_address`, `token_address`)로, `orderby`를 `timestamp DESC`로 설정.
+  - `add_compression_policy`를 통해 **7일이 지난 Cold Data는 백그라운드에서 자동 압축**되도록 설정 (용량 90% 절감 가능).

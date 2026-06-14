@@ -28,16 +28,18 @@ def main():
 
     # 1. DB 매니저 초기화 (Connection Pool)
     try:
+        # Posgresql 서버와 TCP 연결을 맺고 커넥션 풀 초기화
         db_manager = DatabaseManager()
     except Exception as e:
         logger.critical("DB 매니저 초기화 실패. 종료합니다.")
         return
 
     # 2. Kafka 클라이언트 초기화 및 구독
+    # 카프카 서버와 TCP 연결을 맺고 Consumer(blocks, transactions, token_transfers) 구독 초기화
     kafka_client = KafkaConsumerClient()
     kafka_client.subscribe()
 
-    # 3. Redis 매니저 초기화 (캐싱용)
+    # 3. Redis 매니저 초기화 (블록 시간 캐싱용)
     try:
         redis_manager = RedisManager()
     except Exception as e:

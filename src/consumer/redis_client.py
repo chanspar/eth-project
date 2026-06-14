@@ -1,5 +1,6 @@
 import redis
 import logging
+from typing import Optional
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,11 @@ class RedisManager:
             raise e
 
     def cache_block_timestamp(self, block_number: int, timestamp: str):
-        # 1일(86400초) 후 자동 만료되도록 설정해 메모리 누수를 방지합니다.
-        self.client.setex(f"block_time:{block_number}", 86400, timestamp)
+        # 카프카 파티션 딜레이를 고려해 10분(600초) 후 자동 만료되도록 설정 (메모리 절약)
+        self.client.setex(f"block_time:{block_number}", 600, timestamp)
 
-    def get_block_timestamp(self, block_number: int) -> str | None:
-        return self.client.get(f"block_time:{block_number}")
+    def get_block_timestamp(self, block_number: int) -> Optional[str]:
+        result = self.client.get(f"block_time:{block_number}")
+        if result is None:
+            return None
+        return str(result)
