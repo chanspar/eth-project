@@ -1,11 +1,12 @@
 -- 1. Transactions Table (이더리움 이체 및 가스비 동향 추적용)
 CREATE TABLE transactions (
-    hash VARCHAR(66) PRIMARY KEY, -- PK
-    timestamp TIMESTAMPTZ NOT NULL, -- 타임스탬프
-    from_address VARCHAR(42) NOT NULL, -- 보내는 주소
-    to_address VARCHAR(42), -- 받는 주소
+    hash VARCHAR(66) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    from_address VARCHAR(42) NOT NULL,
+    to_address VARCHAR(42),
     value NUMERIC, -- 고래 알림용 (ETH 이체 금액)
-    gas_price NUMERIC -- 대시보드 가스비 추이 분석용
+    gas_price NUMERIC, -- 대시보드 가스비 추이 분석용
+    PRIMARY KEY (hash, timestamp) -- TimescaleDB 제약조건: PK에 timestamp 포함 필수
 );
 
 -- TimescaleDB Hypertable 변환
@@ -13,14 +14,14 @@ SELECT create_hypertable('transactions', 'timestamp');
 
 -- 2. Token Transfers Table (ERC20 토큰 이체 흐름 추적용)
 CREATE TABLE token_transfers (
-    transaction_hash VARCHAR(66) NOT NULL REFERENCES transactions(hash),
-    log_index INTEGER NOT NULL, -- PK 제약조건을 위한 로그 순번
+    transaction_hash VARCHAR(66) NOT NULL,
+    log_index INTEGER NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
     token_address VARCHAR(42) NOT NULL,
     from_address VARCHAR(42) NOT NULL,
     to_address VARCHAR(42) NOT NULL,
     value NUMERIC, -- 토큰 이체 금액
-    PRIMARY KEY (transaction_hash, log_index)
+    PRIMARY KEY (transaction_hash, log_index, timestamp) -- TimescaleDB 제약조건: PK에 timestamp 포함 필수
 );
 
 -- TimescaleDB Hypertable 변환
