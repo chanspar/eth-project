@@ -1,5 +1,5 @@
 from pyspark.sql import functions as F
-from pyspark.sql import SparkSession, DataFrame, Window
+from pyspark.sql import SparkSession, DataFrame, Window, Column
 from pyspark.sql.window import WindowSpec
 from src.silver.spark_config import get_spark_session, read_silver
 from src.schema.silver_schema import token_flow_schema
@@ -15,7 +15,7 @@ WEIGHT_TOTAL_VOLUME      = 0.00
 CEX_FLOW_THRESHOLD = 0.0001
 
 
-def _min_max_norm(col_name: str, window: WindowSpec) -> F.Column:
+def _min_max_norm(col_name: str, window: WindowSpec) -> Column:
     """dt 파티션 내 min-max 정규화 (0~1).
 
     모든 값이 동일한 경우 분모가 0이 되므로 1로 대체하여 ZeroDivisionError 방지.

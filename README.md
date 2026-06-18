@@ -59,3 +59,27 @@ bronze/
 - 클라우드 사용 시 비용 체크
 
 > slack 알림을 이용
+
+#### 스파크
+- 스파크를 이용해 실버, 골드 레이어 TL 함.
+
+
+---
+
+
+## 스트리밍
+1. docker compose -f infra/kafka/docker-compose.yaml up -d 또는 infra/kafka 폴더에 가서 make up 
+
+2. uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 --reload
+- 백엔드 api 서버
+
+3. infra/kafka 폴더에서 make create-topics 실행
+- 토픽 생성
+- blocks, transactions, token_transfers
+
+4. uv run src/consumer/main.py 
+- 카프카 컨슈머
+
+5. docker build -t eth-etl-stream -f Dockerfile.etl .
+   docker run --rm --network host eth-etl-stream
+- 이더리움 etl 실행

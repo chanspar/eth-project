@@ -1,12 +1,12 @@
 from pyspark.sql import functions as F
-from pyspark.sql import SparkSession, DataFrame, Window
+from pyspark.sql import SparkSession, DataFrame, Window, Column
 from src.silver.spark_config import get_spark_session, read_silver
 from src.schema.silver_schema import whale_txn_schema
 from src.gold.utils import write_gold, write_gold_to_bq
 from src.config import get_logger
 
 # 고래 티어 재산정 (당일 total_activity 기준으로 재분류)
-def assign_whale_tier(col_name: str) -> F.Column:
+def assign_whale_tier(col_name: str) -> Column:
     return (
         F.when(F.col(col_name) >= 1000, "Humpback")
         .when(F.col(col_name) >= 500, "Whale")

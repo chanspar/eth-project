@@ -1,124 +1,107 @@
-import os
-import asyncpg
-import aiofiles
 import csv
-import json
 import logging
-import asyncio
-from typing import Optional, AsyncGenerator
+import os
+from typing import AsyncGenerator, Optional
+
+import aiofiles
+import asyncpg
 from fastapi import Request
+
 from src.backend.core.config import settings
-from src.backend.core.ws_manager import manager
 
 pool: Optional[asyncpg.Pool] = None
-listener_conn: Optional[asyncpg.Connection] = None
 
-def handle_whale_notification(connection, pid, channel, payload):
-    """
-    PostgreSQL pg_notify 콜백 함수입니다.
-    이벤트 루프에 broadcast 태스크를 예약합니다.
-    """
-    try:
-        data = json.loads(payload)
-        # Wei to ETH 변환
-        value_eth = float(data.get('value', 0)) / 1e18
-        
-        whale_msg = {
-            "hash": data.get('hash'),
-            "timestamp": data.get('timestamp'),
-            "from_address": data.get('from_address'),
-            "to_address": data.get('to_address'),
-            "value_eth": value_eth
-        }
-        
-        asyncio.create_task(manager.broadcast(whale_msg))
-    except Exception as e:
-        logging.error(f"Error processing notification: {e}")
 
 async def init_db_pool() -> asyncpg.Pool:
-    global pool
-    global listener_conn
-    
-    pool = await asyncpg.create_pool(
-        settings.POSTGRES_DSN, 
-        min_size=settings.DB_POOL_MIN_CONN, 
-        max_size=settings.DB_POOL_MAX_CONN
-    )
-    logging.info("PostgreSQL 연결 풀(Pool)이 생성되었습니다.")
-    
-    # Trigger Setup for Listen/Notify (100 ETH = 10^20 Wei)
-    setup_trigger_query = """
-    CREATE OR REPLACE FUNCTION notify_whale_event() RETURNS TRIGGER AS $$
-    BEGIN
-        IF NEW.value >= 100000000000000000000 THEN
-            PERFORM pg_notify('whale_events', row_to_json(NEW)::text);
-        END IF;
-        RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-
-    DO $$
-    BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'whale_trigger') THEN
-            CREATE TRIGGER whale_trigger
-            AFTER INSERT ON transactions
-            FOR EACH ROW EXECUTE PROCEDURE notify_whale_event();
-        END IF;
-    END
-    $$;
     """
+    PostgreSQL 커넥션 풀을 초기화하고 전역 변수 'pool'에 저장합니다.
     
-    async with pool.acquire() as conn:
-        await conn.execute(setup_trigger_query)
-        logging.info("Whale 트랜잭션 감지 트리거가 세팅되었습니다.")
-        
-    # Set up dedicated connection for LISTEN
-    listener_conn = await asyncpg.connect(settings.POSTGRES_DSN)
-    await listener_conn.add_listener('whale_events', handle_whale_notification)
-    logging.info("PostgreSQL LISTEN ('whale_events') 가 활성화되었습니다.")
+    설정 파일(settings)의 DSN 정보 및 커넥션 풀 크기 제한(DB_POOL_MIN_CONN, DB_POOL_MAX_CONN)을
+    기반으로 asyncpg 커넥션 풀을 생성하고 로깅합니다.
     
+    Returns:
+        asyncpg.Pool: 생성된 PostgreSQL 커넥션 풀 객체
+    """
+    global pool
+
+    pool = await asyncpg.create_pool(
+        settings.POSTGRES_DSN,
+        min_size=settings.DB_POOL_MIN_CONN,
+        max_size=settings.DB_POOL_MAX_CONN,
+    )
+    logging.info("PostgreSQL connection pool created")
+
     return pool
 
+
 async def close_db_pool():
-    global pool
-    global listener_conn
+    """
+    전역 'pool' 변수에 저장되어 활성화된 PostgreSQL 커넥션 풀을 닫습니다.
     
-    if listener_conn:
-        await listener_conn.close()
-        logging.info("PostgreSQL LISTEN 커넥션이 종료되었습니다.")
-        
+    서버 종료 시 Lifespan 이벤트에서 안전하게 커넥션 리소스를 회수하고
+    전역 'pool'을 None으로 초기화합니다.
+    """
+    global pool
+
     if pool:
         await pool.close()
-        logging.info("PostgreSQL 연결 풀이 종료되었습니다.")
+        pool = None
+        logging.info("PostgreSQL connection pool closed")
+
 
 async def get_db(request: Request) -> AsyncGenerator[asyncpg.Connection, None]:
-    """FastAPI Dependency Injection을 위한 DB 커넥션 제공자"""
+    """
+    FastAPI Dependency용 헬퍼 함수입니다.
+    
+    FastAPI 애플리케이션 상태(app.state.pool)에 등록된 커넥션 풀로부터
+    비동기 데이터베이스 커넥션을 획득하여 yield하고, 라우터 작업이 완료되면
+    안전하게 커넥션을 반환(close/release)합니다.
+    
+    Args:
+        request (Request): FastAPI HTTP Request 객체
+        
+    Yields:
+        asyncpg.Connection: 획득한 비동기 DB 커넥션
+    """
     async with request.app.state.pool.acquire() as conn:
         yield conn
 
+
 async def load_tokens_from_csv(pool: asyncpg.Pool):
     """
-    서버 시작 시 src/data/top1000_erc20_tokens.csv 파일을 읽어
-    tokens 테이블에 초기 데이터를 적재합니다. (Upsert)
+    CSV 파일(top1000_erc20_tokens.csv)로부터 토큰 정보를 읽어와 DB의 tokens 테이블에 일괄 로드합니다.
+    
+    1. 로컬 데이터 경로에 파일이 존재하는지 검증합니다.
+    2. CSV 파일을 읽어서 토큰의 주소(소문자 처리), 심볼, 이름, 소수점 자릿수(decimals) 정보를 파싱합니다.
+    3. INSERT INTO ... ON CONFLICT DO UPDATE DML 구문을 사용해 중복(conflict) 주소가 발생할 경우,
+       토큰 심볼, 이름, 소수점 정보를 업데이트합니다.
+    
+    Args:
+        pool (asyncpg.Pool): DB에 쿼리를 실행할 커넥션 풀 객체
     """
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "top1000_erc20_tokens.csv")
+    csv_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "data",
+        "top1000_erc20_tokens.csv",
+    )
     if not os.path.exists(csv_path):
-        logging.warning(f"토큰 메타데이터 파일을 찾을 수 없습니다: {csv_path}")
+        logging.warning("Token metadata CSV not found: %s", csv_path)
         return
 
-    logging.info("토큰 메타데이터(CSV)를 비동기적으로 DB에 적재합니다...")
-    
-    # aiofiles를 사용한 Non-blocking I/O
-    async with aiofiles.open(csv_path, mode='r', encoding='utf-8') as f:
+    logging.info("Loading token metadata CSV into database")
+
+    async with aiofiles.open(csv_path, mode="r", encoding="utf-8-sig") as f:
         content = await f.read()
-        
+
     reader = csv.DictReader(content.splitlines())
     records = []
     for row in reader:
-        address = row['address'].lower()
-        symbol = row['symbol']
-        name = row['name']
-        decimals = int(row['decimals']) if row['decimals'].isdigit() else 18
+        address = row["address"].lower()
+        symbol = row["symbol"]
+        name = row["name"]
+        decimals = int(row["decimals"]) if row["decimals"].isdigit() else 18
         records.append((address, symbol, name, decimals))
 
     query = """
@@ -132,5 +115,55 @@ async def load_tokens_from_csv(pool: asyncpg.Pool):
 
     async with pool.acquire() as conn:
         await conn.executemany(query, records)
-        logging.info(f"총 {len(records)}개의 토큰 메타데이터가 적재/업데이트 되었습니다.")
+        logging.info("Loaded/updated %s token metadata rows", len(records))
+
+
+async def load_known_label_from_csv(pool: asyncpg.Pool):
+    """
+    CSV 파일(known_labels.csv)로부터 알려진 지갑 주소 라벨 정보를 읽어와 DB의 address_labels 테이블에 일괄 로드합니다.
+    
+    1. 로컬 데이터 경로에 파일이 존재하는지 검증합니다.
+    2. CSV 파일을 읽어서 주소(소문자 처리), 이름(name), 카테고리(category) 정보를 파싱합니다.
+    3. INSERT INTO ... ON CONFLICT (address) DO UPDATE DML 구문을 사용하여
+       이미 존재하는 주소인 경우 이름과 카테고리를 최신 정보로 업데이트합니다.
+    
+    Args:
+        pool (asyncpg.Pool): DB에 쿼리를 실행할 커넥션 풀 객체
+    """
+    csv_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "data",
+        "known_labels.csv",
+    )
+    if not os.path.exists(csv_path):
+        logging.warning("Known labels CSV not found: %s", csv_path)
+        return
+
+    logging.info("Loading known labels CSV into database")
+
+    async with aiofiles.open(csv_path, mode="r", encoding="utf-8-sig") as f:
+        content = await f.read()
+
+    reader = csv.DictReader(content.splitlines())
+    records = []
+    for row in reader:
+        address = row["address"].lower()
+        name = row["name"]
+        category = row["category"]
+        records.append((address, name, category))
+
+    query = """
+    INSERT INTO address_labels (address, name, category)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (address) DO UPDATE
+    SET name = EXCLUDED.name,
+        category = EXCLUDED.category;
+    """
+
+    async with pool.acquire() as conn:
+        await conn.executemany(query, records)
+        logging.info("Loaded/updated %s known label rows", len(records))
+
 
