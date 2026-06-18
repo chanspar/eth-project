@@ -1,9 +1,46 @@
 import logging
 import json
-from confluent_kafka import Consumer, KafkaError, KafkaException
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+class KafkaProducerClient:
+    def __init__(self):
+        conf = {
+            'bootstrap.servers': settings.KAFKA_BROKER,
+        }
+        self.producer = Producer(conf)
+        self._error = None
+
+    def _on_delivery(self, err, msg):
+        if err is not None:
+            logger.error(f"Kafka message delivery failed: {err}")
+            self._error = err
+
+    def send_message(self, topic, key, value):
+        encoded_key = key.encode('utf-8') if key is not None else None
+        encoded_value = json.dumps(value, default=str).encode('utf-8')
+        self.producer.produce(
+            topic,
+            key=encoded_key,
+            value=encoded_value,
+            on_delivery=self._on_delivery
+        )
+        self.producer.poll(0)
+
+    def flush(self):
+        remaining = self.producer.flush()
+        if remaining:
+            raise RuntimeError(f"Kafka producer failed to flush {remaining} message(s)")
+        if self._error is not None:
+            err = self._error
+            self._error = None
+            raise RuntimeError(f"Kafka message delivery failed: {err}")
+
+    def close(self):
+        self.flush()
+        logger.info("Kafka Producer connection closed")
 
 class KafkaConsumerClient:
     def __init__(self):

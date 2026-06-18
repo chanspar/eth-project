@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     DB_POOL_MIN_CONN: int = 1
     DB_POOL_MAX_CONN: int = 10
     BATCH_SIZE: int = 100
+    WHALE_ALERTS_TOPIC: str = "whale-alerts"
+    WHALE_THRESHOLD_WEI: int = 100 * 10**18
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
