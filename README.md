@@ -83,3 +83,5 @@ bronze/
 5. docker build -t eth-etl-stream -f Dockerfile.etl .
    docker run --rm --network host eth-etl-stream
 - 이더리움 etl 실행
+
+프론트 npm run dev
