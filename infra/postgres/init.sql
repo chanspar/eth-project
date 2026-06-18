@@ -35,6 +35,14 @@ CREATE TABLE tokens (
     decimals SMALLINT
 );
 
+-- 4. Address Labels Table (거래소 및 주요 기관 지갑 라벨링용)
+CREATE TABLE address_labels (
+    address VARCHAR(42) PRIMARY KEY,
+    name VARCHAR(255),
+    category VARCHAR(100)
+);
+
+
 -- ==========================================
 -- Indexing (비즈니스 로직 최적화)
 -- ==========================================
