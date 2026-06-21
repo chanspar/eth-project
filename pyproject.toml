@@ -24,6 +24,9 @@ dependencies = [
     "setuptools<70",
     "uvicorn[standard]>=0.39.0",
     "websockets>=15.0.1",
+    "elasticsearch<9.0.0",
+    "aiohttp",
+    "aiokafka",
 ]
 
 [build-system]

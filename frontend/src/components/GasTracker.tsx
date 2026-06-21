@@ -4,9 +4,9 @@ import { Fuel } from 'lucide-react';
 const API_BASE = 'http://localhost:8000';
 
 interface GasData {
-  avg_gas_gwei: number;
-  block_number: number | null;
-  measured_at: string | null;
+  average_gas_price_gwei: number;
+  block_number?: number | null;
+  measured_at?: string | null;
 }
 
 export default function GasTracker() {
@@ -64,11 +64,11 @@ export default function GasTracker() {
         <div className="empty-state">
           <p className="error-text">{error}</p>
         </div>
-      ) : data ? (
+      ) : data && data.average_gas_price_gwei !== undefined ? (
         <>
           <div>
             <span className="gas-value">
-              {data.avg_gas_gwei.toFixed(2)}
+              {data.average_gas_price_gwei.toFixed(2)}
             </span>
             <span className="gas-unit">Gwei</span>
           </div>

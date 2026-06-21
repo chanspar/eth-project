@@ -59,3 +59,18 @@ class WalletHistoryResponse(BaseModel):
     eth_transactions: List[EthTransactionHistory] = Field(description="지갑의 최근 ETH 거래 내역 목록")
     token_transfers: List[TokenTransferHistory] = Field(description="지갑의 최근 ERC20 토큰 이체 내역 목록")
 
+class TokenSearchResponse(BaseModel):
+    address: str = Field(description="토큰 스마트 계약 주소")
+    symbol: Optional[str] = Field(None, description="토큰 심볼")
+    name: Optional[str] = Field(None, description="토큰 이름")
+    decimals: Optional[int] = Field(None, description="토큰 소수점 자리수")
+
+class TokenTrendPoint(BaseModel):
+    time_bucket: datetime = Field(description="시간 구간")
+    transfer_count: int = Field(description="해당 구간 내 이체 횟수")
+    total_value: float = Field(description="해당 구간 내 이체 총 수량")
+
+class TokenTrendsResponse(BaseModel):
+    address: str = Field(description="토큰 스마트 계약 주소")
+    trends: List[TokenTrendPoint] = Field(description="시간대별 토큰 이체 트렌드")
+

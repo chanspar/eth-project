@@ -6,18 +6,19 @@ const DEFAULT_ADDRESS = '0xd8da6bf26964af9d7eed9e03e53415d37aa96045';
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 interface WalletTx {
-  tx_hash: string;
+  hash: string;
   from_address: string;
   to_address: string;
-  value_eth: number;
-  token_symbol?: string;
-  block_number: number;
+  value_eth?: number;
+  value?: number;
+  symbol?: string;
   timestamp: string;
 }
 
 interface WalletHistoryResponse {
   address: string;
-  transactions: WalletTx[];
+  eth_transactions: WalletTx[];
+  token_transfers: WalletTx[];
 }
 
 function truncateAddress(addr: string): string {
@@ -117,19 +118,21 @@ export default function WalletExplorer() {
         <div className="empty-state">
           <p className="error-text">{error}</p>
         </div>
-      ) : !data || data.transactions.length === 0 ? (
+      ) : !data || (data.eth_transactions.length === 0 && data.token_transfers.length === 0) ? (
         <div className="empty-state">
           <Wallet />
           <p>No transactions found for this address.</p>
         </div>
       ) : (
         <div className="wallet-history-list">
-          {data.transactions.map((tx) => {
+          {[...data.eth_transactions, ...data.token_transfers]
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .map((tx) => {
             const isSend = tx.from_address.toLowerCase() === searchedAddress.toLowerCase();
             const partnerAddress = isSend ? tx.to_address : tx.from_address;
 
             return (
-              <div className="wallet-tx-item" key={tx.tx_hash}>
+              <div className="wallet-tx-item" key={tx.hash}>
                 <span className={`tx-type-badge ${isSend ? 'send' : 'receive'}`}>
                   {isSend ? 'Send' : 'Receive'}
                 </span>
@@ -140,7 +143,7 @@ export default function WalletExplorer() {
                 </div>
 
                 <span className="tx-value">
-                  {tx.value_eth.toFixed(4)} {tx.token_symbol || 'ETH'}
+                  {tx.value_eth !== undefined ? tx.value_eth.toFixed(4) : tx.value?.toFixed(4)} {tx.symbol || 'ETH'}
                 </span>
 
                 <span className="tx-time">

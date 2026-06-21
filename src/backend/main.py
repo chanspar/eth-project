@@ -7,11 +7,13 @@ from typing import Optional
 
 from confluent_kafka import Consumer, KafkaException
 from confluent_kafka.admin import AdminClient, NewTopic # type: ignore
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.backend.api import gas, tokens, wallets, whales
 from src.backend.core.config import settings
+from src.backend.services.sync_worker import ElasticSyncWorker
 from src.backend.core.db import (
     close_db_pool,
     init_db_pool,
@@ -117,6 +119,13 @@ async def lifespan(app: FastAPI):
         await load_tokens_from_csv(pool)
         await load_known_label_from_csv(pool)
 
+        es_client = AsyncElasticsearch([settings.ELASTICSEARCH_URL])
+        app.state.es_client = es_client
+
+        sync_worker = ElasticSyncWorker(es_client)
+        await sync_worker.start()
+        app.state.sync_worker = sync_worker
+
         # Kafka 토픽 자동 생성 보장
         try:
             admin = AdminClient({"bootstrap.servers": settings.KAFKA_BROKER})
@@ -142,6 +151,12 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await whale_consumer_task
 
+        if hasattr(app.state, 'sync_worker'):
+            await app.state.sync_worker.stop()
+        
+        if hasattr(app.state, 'es_client'):
+            await app.state.es_client.close()
+
         try:
             await close_db_pool()
         except Exception:
@@ -155,6 +170,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -162,6 +178,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 app.include_router(gas.router, prefix="/api/v1/metrics")
 app.include_router(whales.router, prefix="/api/v1/whales")

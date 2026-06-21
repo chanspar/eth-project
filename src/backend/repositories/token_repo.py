@@ -40,3 +40,50 @@ class TokenRepository:
         rows = await self.conn.fetch(query, hours, limit) # hours: $1, limit: $2
         return [dict(row) for row in rows]
 
+    async def get_token_trends_by_address(self, address: str, bucket_width: str = '1 hour', limit: int = 24) -> List[Dict[str, Any]]:
+        """
+        특정 토큰의 시간대별 이체 횟수 및 이체량 트렌드를 조회합니다.
+        """
+        query = """
+        SELECT time_bucket($1::interval, timestamp) AS bucket,
+               COUNT(*) as transfer_count,
+               SUM(value) as total_value
+        FROM token_transfers
+        WHERE token_address = $2
+          AND timestamp >= NOW() - ($1::interval * $3)
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        """
+        rows = await self.conn.fetch(query, bucket_width, address, limit)
+        return [dict(row) for row in rows]
+
+    async def get_all_tokens(self, limit: int = 100, offset: int = 0, prefix: str = None) -> List[Dict[str, Any]]:
+        """
+        데이터베이스에 저장된 모든 토큰의 목록을 페이지네이션하여 조회합니다.
+        
+        Args:
+            limit (int): 반환할 토큰 최대 개수
+            offset (int): 건너뛸 레코드 수
+            prefix (str, optional): 심볼의 시작 문자 필터
+            
+        Returns:
+            List[Dict[str, Any]]: 토큰 목록
+        """
+        if prefix:
+            query = """
+            SELECT address, symbol, name, decimals
+            FROM tokens
+            WHERE symbol ILIKE $3 || '%'
+            ORDER BY symbol ASC NULLS LAST
+            LIMIT $1 OFFSET $2
+            """
+            rows = await self.conn.fetch(query, limit, offset, prefix)
+        else:
+            query = """
+            SELECT address, symbol, name, decimals
+            FROM tokens
+            ORDER BY symbol ASC NULLS LAST
+            LIMIT $1 OFFSET $2
+            """
+            rows = await self.conn.fetch(query, limit, offset)
+        return [dict(row) for row in rows]

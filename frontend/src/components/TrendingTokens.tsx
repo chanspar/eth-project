@@ -12,8 +12,8 @@ interface TokenData {
 }
 
 interface TrendingResponse {
-  tokens: TokenData[];
-  period_hours: number;
+  trending_tokens: TokenData[];
+  period_hours?: number;
 }
 
 const TIME_OPTIONS = [
@@ -95,7 +95,7 @@ export default function TrendingTokens() {
         <div className="empty-state">
           <p className="error-text">{error}</p>
         </div>
-      ) : !data || data.tokens.length === 0 ? (
+      ) : !data || data.trending_tokens.length === 0 ? (
         <div className="empty-state">
           <p>No trending tokens found in this period.</p>
         </div>
@@ -110,7 +110,7 @@ export default function TrendingTokens() {
             </tr>
           </thead>
           <tbody>
-            {data.tokens.map((token, index) => (
+            {data.trending_tokens.map((token, index) => (
               <tr key={token.address}>
                 <td className="token-rank">{index + 1}</td>
                 <td>

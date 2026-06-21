@@ -53,6 +53,29 @@ def publish_whale_alerts(producer: KafkaProducerClient, transactions: list[Trans
 
     return len(whale_transactions)
 
+def build_token_event_payload(token_tx: TokenTransferModel) -> dict:
+    return {
+        "address": token_tx.token_address,
+        "timestamp": token_tx.timestamp.isoformat() if token_tx.timestamp else None,
+        "from_address": token_tx.from_address,
+        "to_address": token_tx.to_address,
+        "value": token_tx.value,
+        "block_number": token_tx.block_number,
+        "transaction_hash": token_tx.transaction_hash
+    }
+
+def publish_token_events(producer: KafkaProducerClient, token_transfers: list[TokenTransferModel]) -> int:
+    for tx in token_transfers:
+        producer.send_message(
+            settings.TOKEN_EVENTS_TOPIC,
+            tx.token_address,
+            build_token_event_payload(tx)
+        )
+    if token_transfers:
+        producer.flush()
+        logger.info("Published %s token transfer event(s)", len(token_transfers))
+    return len(token_transfers)
+
 
 def flush_batches(
     db_manager: DatabaseManager,
@@ -73,6 +96,7 @@ def flush_batches(
 
         conn.commit()
         publish_whale_alerts(producer_client, tx_batch)
+        publish_token_events(producer_client, token_batch)
         kafka_client.commit()
 
         logger.info(

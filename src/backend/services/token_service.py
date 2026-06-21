@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 import logging
 from src.backend.repositories.token_repo import TokenRepository
-from src.backend.models.schemas import TrendingTokensResponse, TrendingToken
+from src.backend.models.schemas import TrendingTokensResponse, TrendingToken, TokenSearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -45,5 +45,37 @@ class TokenService:
             return TrendingTokensResponse(trending_tokens=tokens)
         except Exception as e:
             logger.error(f"Failed to fetch trending tokens: {e}")
+            raise HTTPException(status_code=500, detail="Database query failed")
+
+    async def get_token_trends(self, address: str, bucket_width: str, limit: int) -> list:
+        try:
+            rows = await self.repo.get_token_trends_by_address(address, bucket_width, limit)
+            from src.backend.models.schemas import TokenTrendPoint
+            trends = []
+            for row in rows:
+                trends.append(TokenTrendPoint(
+                    time_bucket=row['bucket'],
+                    transfer_count=row['transfer_count'],
+                    total_value=float(row['total_value']) if row['total_value'] else 0.0
+                ))
+            return trends
+        except Exception as e:
+            logger.error(f"Failed to fetch token trends for {address}: {e}")
+            raise HTTPException(status_code=500, detail="Database query failed")
+
+    async def get_all_tokens(self, limit: int, offset: int, prefix: str = None) -> list[TokenSearchResponse]:
+        try:
+            rows = await self.repo.get_all_tokens(limit=limit, offset=offset, prefix=prefix)
+            tokens = []
+            for row in rows:
+                tokens.append(TokenSearchResponse(
+                    address=row['address'],
+                    symbol=row['symbol'],
+                    name=row['name'],
+                    decimals=row['decimals']
+                ))
+            return tokens
+        except Exception as e:
+            logger.error(f"Failed to fetch all tokens: {e}")
             raise HTTPException(status_code=500, detail="Database query failed")
 
