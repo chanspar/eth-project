@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
+    TOKEN_EVENTS_TOPIC: str = "token-events"
+    ELASTICSEARCH_URL: str = "http://localhost:9200"
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
