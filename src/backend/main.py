@@ -22,11 +22,7 @@ from src.backend.core.db import (
 )
 from src.backend.core.ws_manager import manager
 
-logger = logging.getLogger("uvicorn.error")
-if not logger.handlers and not logging.getLogger().handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-else:
-    logging.getLogger().setLevel(logging.INFO)
+from src.backend.core.logger import logger
 
 
 def create_whale_alert_consumer() -> Consumer:
@@ -169,6 +165,23 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+import time
+from fastapi import Request
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000
+    logger.info("API Request", extra={
+        "method": request.method,
+        "url": str(request.url.path),
+        "status_code": response.status_code,
+        "duration_ms": round(process_time, 2)
+    })
+    return response
+
 
 
 app.add_middleware(

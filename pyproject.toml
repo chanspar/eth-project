@@ -27,6 +27,7 @@ dependencies = [
     "elasticsearch<9.0.0",
     "aiohttp",
     "aiokafka",
+    "python-json-logger>=4.0.0",
 ]
 
 [build-system]
