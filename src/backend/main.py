@@ -13,12 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.backend.api import gas, tokens, wallets, whales
 from src.backend.core.config import settings
-from src.backend.services.sync_worker import ElasticSyncWorker
+
 from src.backend.core.db import (
     close_db_pool,
     init_db_pool,
     load_known_label_from_csv,
     load_tokens_from_csv,
+    load_tokens_to_es,
 )
 from src.backend.core.ws_manager import manager
 
@@ -99,6 +100,8 @@ async def consume_whale_alerts(consumer: Optional[Consumer] = None) -> None:
         logger.info("Kafka whale alert consumer closed")
 
 
+from src.backend.core.redis_client import redis_manager
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -115,12 +118,15 @@ async def lifespan(app: FastAPI):
         await load_tokens_from_csv(pool)
         await load_known_label_from_csv(pool)
 
+        await redis_manager.connect()
+
         es_client = AsyncElasticsearch([settings.ELASTICSEARCH_URL])
         app.state.es_client = es_client
+        
+        # 앱 시작 시 ES에 토큰 정보 자동 로드
+        await load_tokens_to_es(es_client)
 
-        sync_worker = ElasticSyncWorker(es_client)
-        await sync_worker.start()
-        app.state.sync_worker = sync_worker
+
 
         # Kafka 토픽 자동 생성 보장
         try:
@@ -147,11 +153,17 @@ async def lifespan(app: FastAPI):
             with suppress(asyncio.CancelledError):
                 await whale_consumer_task
 
-        if hasattr(app.state, 'sync_worker'):
-            await app.state.sync_worker.stop()
+        await manager.stop_ping_loop()
+
+
         
         if hasattr(app.state, 'es_client'):
             await app.state.es_client.close()
+
+        try:
+            await redis_manager.disconnect()
+        except Exception:
+            logger.exception("Redis disconnect failed")
 
         try:
             await close_db_pool()
@@ -168,6 +180,19 @@ app = FastAPI(
 
 import time
 from fastapi import Request
+from fastapi.responses import JSONResponse
+from src.backend.core.exceptions import DatabaseFetchError
+
+@app.exception_handler(DatabaseFetchError)
+async def database_fetch_error_handler(request: Request, exc: DatabaseFetchError):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Database query failed",
+            "path": str(request.url)
+        },
+    )
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

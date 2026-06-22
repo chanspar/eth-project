@@ -56,6 +56,10 @@ CREATE INDEX idx_token_transfers_token_address ON token_transfers(token_address)
 CREATE INDEX idx_token_transfers_from_address ON token_transfers(from_address);
 CREATE INDEX idx_token_transfers_to_address ON token_transfers(to_address);
 
+-- 고래 거래(Whale Alert) 검색 최적화용 부분 인덱스 (Partial Index)
+-- value >= 100 ETH 인 데이터만 따로 인덱싱하여, 풀스캔 없이 즉시 상위 10개를 뽑을 수 있게 합니다.
+CREATE INDEX idx_transactions_whale ON transactions(timestamp DESC) WHERE value >= 100000000000000000000;
+
 -- ==========================================
 -- TimescaleDB Compression (운영 환경 데이터 압축)
 -- ==========================================
@@ -80,3 +84,11 @@ ALTER TABLE token_transfers SET (
 );
 
 SELECT add_compression_policy('token_transfers', INTERVAL '7 days');
+
+-- ==========================================
+-- TimescaleDB Retention (운영 환경 데이터 삭제 정책)
+-- ==========================================
+
+-- 대시보드 용도이므로 무한정 데이터를 쌓지 않고, 6개월이 지난 오래된 데이터는 자동 삭제하여 디스크 풀을 방지합니다.
+SELECT add_retention_policy('transactions', INTERVAL '6 months');
+SELECT add_retention_policy('token_transfers', INTERVAL '6 months');

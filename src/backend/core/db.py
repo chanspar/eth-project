@@ -29,7 +29,7 @@ async def init_db_pool() -> asyncpg.Pool:
         min_size=settings.DB_POOL_MIN_CONN,
         max_size=settings.DB_POOL_MAX_CONN,
     )
-    logging.info("PostgreSQL connection pool created")
+    logging.info(f"DB 커넥션 풀 생성 완료. (최대 {pool.get_max_size()}개)")
 
     return pool
 
@@ -46,7 +46,7 @@ async def close_db_pool():
     if pool:
         await pool.close()
         pool = None
-        logging.info("PostgreSQL connection pool closed")
+        logging.info("DB 커넥션 풀이 안전하게 종료되었습니다.")
 
 
 async def get_db(request: Request) -> AsyncGenerator[asyncpg.Connection, None]:
@@ -66,6 +66,13 @@ async def get_db(request: Request) -> AsyncGenerator[asyncpg.Connection, None]:
     async with request.app.state.pool.acquire() as conn:
         yield conn
 
+def get_pool(request: Request) -> asyncpg.Pool:
+    """
+    FastAPI 애플리케이션에 등록된 커넥션 풀 자체를 반환합니다.
+    캐시 확인 전 불필요하게 커넥션을 미리 점유(acquire)하는 것을 방지할 때 유용합니다.
+    """
+    return request.app.state.pool
+
 
 async def load_tokens_from_csv(pool: asyncpg.Pool):
     """
@@ -74,7 +81,7 @@ async def load_tokens_from_csv(pool: asyncpg.Pool):
     1. 로컬 데이터 경로에 파일이 존재하는지 검증합니다.
     2. CSV 파일을 읽어서 토큰의 주소(소문자 처리), 심볼, 이름, 소수점 자릿수(decimals) 정보를 파싱합니다.
     3. INSERT INTO ... ON CONFLICT DO UPDATE DML 구문을 사용해 중복(conflict) 주소가 발생할 경우,
-       토큰 심볼, 이름, 소수점 정보를 업데이트합니다.
+    토큰 심볼, 이름, 소수점 정보를 업데이트합니다.
     
     Args:
         pool (asyncpg.Pool): DB에 쿼리를 실행할 커넥션 풀 객체
@@ -125,7 +132,7 @@ async def load_known_label_from_csv(pool: asyncpg.Pool):
     1. 로컬 데이터 경로에 파일이 존재하는지 검증합니다.
     2. CSV 파일을 읽어서 주소(소문자 처리), 이름(name), 카테고리(category) 정보를 파싱합니다.
     3. INSERT INTO ... ON CONFLICT (address) DO UPDATE DML 구문을 사용하여
-       이미 존재하는 주소인 경우 이름과 카테고리를 최신 정보로 업데이트합니다.
+    이미 존재하는 주소인 경우 이름과 카테고리를 최신 정보로 업데이트합니다.
     
     Args:
         pool (asyncpg.Pool): DB에 쿼리를 실행할 커넥션 풀 객체
@@ -165,5 +172,50 @@ async def load_known_label_from_csv(pool: asyncpg.Pool):
     async with pool.acquire() as conn:
         await conn.executemany(query, records)
         logging.info("Loaded/updated %s known label rows", len(records))
+
+from elasticsearch import AsyncElasticsearch
+from elasticsearch.helpers import async_bulk
+
+async def load_tokens_to_es(es_client: AsyncElasticsearch):
+    """
+    CSV 파일(top1000_erc20_tokens.csv)로부터 토큰 정보를 읽어와 Elasticsearch의 tokens 인덱스에 일괄 로드합니다.
+    앱 시작 시 자동으로 실행되어 수동 인덱싱이 필요 없도록 합니다.
+    """
+    csv_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "data",
+        "top1000_erc20_tokens.csv",
+    )
+    if not os.path.exists(csv_path):
+        logging.warning("Token metadata CSV not found for ES: %s", csv_path)
+        return
+
+    logging.info("Loading token metadata CSV into Elasticsearch")
+
+    async with aiofiles.open(csv_path, mode="r", encoding="utf-8-sig") as f:
+        content = await f.read()
+
+    reader = csv.DictReader(content.splitlines())
+    actions = []
+    for row in reader:
+        address = row["address"].lower()
+        actions.append({
+            "_index": "tokens",
+            "_id": address,
+            "_source": {
+                "address": address,
+                "symbol": row["symbol"],
+                "name": row["name"],
+                "decimals": int(row["decimals"]) if row["decimals"].isdigit() else 18
+            }
+        })
+
+    try:
+        await async_bulk(es_client, actions)
+        logging.info("Loaded/updated %s tokens in Elasticsearch", len(actions))
+    except Exception as e:
+        logging.error("Failed to load tokens to Elasticsearch: %s", e)
 
 

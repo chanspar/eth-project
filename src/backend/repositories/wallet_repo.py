@@ -27,21 +27,26 @@ class WalletRepository:
         """
         query = """
         SELECT 
-            t.hash, 
-            t.timestamp, 
-            t.from_address, 
-            t.to_address, 
-            t.value, 
-            t.gas_price,
+            sub.hash, 
+            sub.timestamp, 
+            sub.from_address, 
+            sub.to_address, 
+            sub.value, 
+            sub.gas_price,
             al_from.name as from_label,
             al_from.category as from_category,
             al_to.name as to_label,
             al_to.category as to_category
-        FROM transactions t
-        LEFT JOIN address_labels al_from ON t.from_address = al_from.address
-        LEFT JOIN address_labels al_to ON t.to_address = al_to.address
-        WHERE t.from_address = $1 OR t.to_address = $1
-        ORDER BY t.timestamp DESC
+        FROM (
+            (SELECT hash, timestamp, from_address, to_address, value, gas_price 
+             FROM transactions WHERE from_address = $1 ORDER BY timestamp DESC LIMIT $2)
+            UNION ALL
+            (SELECT hash, timestamp, from_address, to_address, value, gas_price 
+             FROM transactions WHERE to_address = $1 ORDER BY timestamp DESC LIMIT $2)
+        ) as sub
+        LEFT JOIN address_labels al_from ON sub.from_address = al_from.address
+        LEFT JOIN address_labels al_to ON sub.to_address = al_to.address
+        ORDER BY sub.timestamp DESC
         LIMIT $2
         """
         rows = await self.conn.fetch(query, address, limit)
@@ -60,23 +65,28 @@ class WalletRepository:
         """
         query = """
         SELECT 
-            tt.transaction_hash as hash, 
-            tt.timestamp, 
-            tt.from_address, 
-            tt.to_address, 
-            tt.value, 
+            sub.transaction_hash as hash, 
+            sub.timestamp, 
+            sub.from_address, 
+            sub.to_address, 
+            sub.value, 
             t.symbol, 
             t.decimals,
             al_from.name as from_label,
             al_from.category as from_category,
             al_to.name as to_label,
             al_to.category as to_category
-        FROM token_transfers tt
-        LEFT JOIN tokens t ON tt.token_address = t.address
-        LEFT JOIN address_labels al_from ON tt.from_address = al_from.address
-        LEFT JOIN address_labels al_to ON tt.to_address = al_to.address
-        WHERE tt.from_address = $1 OR tt.to_address = $1
-        ORDER BY tt.timestamp DESC
+        FROM (
+            (SELECT transaction_hash, timestamp, from_address, to_address, value, token_address 
+             FROM token_transfers WHERE from_address = $1 ORDER BY timestamp DESC LIMIT $2)
+            UNION ALL
+            (SELECT transaction_hash, timestamp, from_address, to_address, value, token_address 
+             FROM token_transfers WHERE to_address = $1 ORDER BY timestamp DESC LIMIT $2)
+        ) as sub
+        LEFT JOIN tokens t ON sub.token_address = t.address
+        LEFT JOIN address_labels al_from ON sub.from_address = al_from.address
+        LEFT JOIN address_labels al_to ON sub.to_address = al_to.address
+        ORDER BY sub.timestamp DESC
         LIMIT $2
         """
         rows = await self.conn.fetch(query, address, limit)

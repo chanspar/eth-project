@@ -45,44 +45,26 @@ export default function GasTracker() {
   }, []);
 
   return (
-    <section className="card" id="gas-tracker">
-      <div className="card-header">
-        <h2 className="card-title">
-          <Fuel />
-          Gas Price
-        </h2>
-        {data?.measured_at && (
-          <span style={{ fontSize: 11, color: 'var(--ink-tertiary)' }}>
-            Updated {new Date(data.measured_at).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="loading-shimmer" style={{ height: 72, width: '60%' }} />
-      ) : error ? (
-        <div className="empty-state">
-          <p className="error-text">{error}</p>
-        </div>
-      ) : data && data.average_gas_price_gwei !== undefined ? (
-        <>
-          <div>
-            <span className="gas-value">
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', background: 'var(--surface-1)', padding: '12px 20px', borderRadius: 'var(--rounded-pill)', border: '1px solid var(--hairline)' }}>
+      <Fuel size={18} color="var(--primary)" style={{ transform: 'translateY(3px)' }} />
+      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-subtle)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gas Price</span>
+      
+      <div style={{ marginLeft: '8px' }}>
+        {loading ? (
+          <span style={{ color: 'var(--ink-subtle)' }}>Loading...</span>
+        ) : error ? (
+          <span className="error-text">Error</span>
+        ) : data && data.average_gas_price_gwei !== undefined ? (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+            <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.5px' }}>
               {data.average_gas_price_gwei.toFixed(2)}
             </span>
-            <span className="gas-unit">Gwei</span>
+            <span style={{ fontSize: 13, color: 'var(--ink-subtle)' }}>Gwei</span>
           </div>
-          <div className="gas-meta">
-            <div>
-              Block: <span>{data.block_number ?? 'N/A'}</span>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="empty-state">
-          <p>No gas data available.</p>
-        </div>
-      )}
-    </section>
+        ) : (
+          <span style={{ color: 'var(--ink-subtle)' }}>N/A</span>
+        )}
+      </div>
+    </div>
   );
 }

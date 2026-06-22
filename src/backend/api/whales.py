@@ -16,8 +16,8 @@ def get_whale_service(conn: asyncpg.Connection = Depends(get_db)) -> WhaleServic
     return WhaleService(repo)
 
 
-@router.get("/", response_model=WhaleListResponse)
-async def get_recent_whales(limit: int = 10, service: WhaleService = Depends(get_whale_service)):
+@router.get("", response_model=WhaleListResponse)
+async def get_recent_whales(limit: int = 50, service: WhaleService = Depends(get_whale_service)):
     """
     최근 설정된 임계값 이상의 대규모 자금 이체(고래 거래) 내역 목록을 조회합니다.
     """

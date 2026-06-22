@@ -1,9 +1,7 @@
-from fastapi import HTTPException
-import logging
-from src.backend.repositories.wallet_repo import WalletRepository
+from src.backend.core.exceptions import DatabaseFetchError
+from src.backend.core.logger import logger
 from src.backend.models.schemas import WalletHistoryResponse, EthTransactionHistory, TokenTransferHistory
-
-logger = logging.getLogger(__name__)
+from src.backend.repositories.wallet_repo import WalletRepository
 
 class WalletService:
     """
@@ -32,7 +30,7 @@ class WalletService:
             WalletHistoryResponse: 지갑의 ETH 거래 내역 및 ERC20 이체 내역 목록이 통합된 응답 DTO
             
         Raises:
-            HTTPException: 데이터베이스 조회 혹은 포맷팅 처리 중 오류 발생 시 500 상태 코드 반환
+            DatabaseFetchError: 데이터베이스 조회 혹은 포맷팅 처리 중 오류 발생 시 예외 발생
         """
         address = address.lower()
         try:
@@ -83,5 +81,5 @@ class WalletService:
             )
         except Exception as e:
             logger.error(f"Failed to fetch wallet history for {address}: {e}")
-            raise HTTPException(status_code=500, detail="Database query failed")
+            raise DatabaseFetchError("Database query failed")
 

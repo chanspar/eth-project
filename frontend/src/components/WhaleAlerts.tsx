@@ -5,20 +5,20 @@ interface WhaleAlertsProps {
   messages: WhaleAlert[];
 }
 
-function truncateAddress(addr: string): string {
-  if (!addr || addr.length < 12) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
 function formatEth(value: number): string {
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toFixed(2);
 }
 
 function timeAgo(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
+  // Ensure the timestamp is parsed as UTC if it lacks a timezone specifier
+  let ts = timestamp;
+  if (!ts.endsWith('Z') && !ts.includes('+')) {
+    ts += 'Z';
+  }
+  const diff = Date.now() - new Date(ts).getTime();
+  const seconds = Math.max(0, Math.floor(diff / 1000));
+  if (seconds < 60) return `Just now`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
@@ -57,14 +57,14 @@ export default function WhaleAlerts({ messages }: WhaleAlertsProps) {
                   {alert.from_label ? (
                     <span className="whale-label">From: {alert.from_label}</span>
                   ) : (
-                    <span className="whale-addr">From: {truncateAddress(alert.from_address)}</span>
+                    <span className="whale-addr">From: {alert.from_address}</span>
                   )}
                 </div>
                 <div>
                   {alert.to_label ? (
                     <span className="whale-label">To: {alert.to_label}</span>
                   ) : (
-                    <span className="whale-addr">To: {truncateAddress(alert.to_address)}</span>
+                    <span className="whale-addr">To: {alert.to_address}</span>
                   )}
                 </div>
               </div>

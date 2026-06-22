@@ -1,9 +1,7 @@
-from fastapi import HTTPException
-import logging
-from src.backend.repositories.whale_repo import WhaleRepository
+from src.backend.core.exceptions import DatabaseFetchError
+from src.backend.core.logger import logger
 from src.backend.models.schemas import WhaleListResponse, WhaleTransaction
-
-logger = logging.getLogger(__name__)
+from src.backend.repositories.whale_repo import WhaleRepository
 
 class WhaleService:
     """
@@ -32,7 +30,7 @@ class WhaleService:
             WhaleListResponse: 고래 트랜잭션 정보 및 지갑 라벨링 메타데이터를 포함한 응답 DTO
             
         Raises:
-            HTTPException: 데이터베이스 쿼리 혹은 포맷팅 처리 중 오류 발생 시 500 상태 코드 반환
+            DatabaseFetchError: 데이터베이스 쿼리 혹은 포맷팅 처리 중 오류 발생 시 예외 발생
         """
         try:
             rows = await self.repo.get_recent_whales(self.WHALE_THRESHOLD_WEI, limit)
@@ -53,5 +51,5 @@ class WhaleService:
             return WhaleListResponse(whales=whales)
         except Exception as e:
             logger.error(f"Failed to fetch recent whales: {e}")
-            raise HTTPException(status_code=500, detail="Database query failed")
+            raise DatabaseFetchError("Database query failed")
 

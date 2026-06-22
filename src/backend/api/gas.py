@@ -1,14 +1,14 @@
 import asyncpg
 from fastapi import APIRouter, Depends
-from src.backend.core.db import get_db
+from src.backend.core.db import get_pool
 from src.backend.repositories.gas_repo import GasRepository
 from src.backend.services.gas_service import GasService
 from src.backend.models.schemas import GasMetricsResponse
 
 router = APIRouter()
 
-def get_gas_service(conn: asyncpg.Connection = Depends(get_db)) -> GasService:
-    repo = GasRepository(conn)
+def get_gas_service(pool: asyncpg.Pool = Depends(get_pool)) -> GasService:
+    repo = GasRepository(pool)
     return GasService(repo)
 
 @router.get("/gas", response_model=GasMetricsResponse)

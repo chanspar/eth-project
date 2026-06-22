@@ -110,6 +110,7 @@ a:hover {
   grid-template-columns: 1fr 1fr;
   gap: var(--space-lg);
   padding-bottom: var(--space-section);
+  align-items: start;
 }
 
 .dashboard-grid .full-width {
@@ -259,7 +260,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  max-height: 480px;
+  max-height: 400px;
   overflow-y: auto;
 }
 

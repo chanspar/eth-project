@@ -45,12 +45,12 @@ class TokenRepository:
         특정 토큰의 시간대별 이체 횟수 및 이체량 트렌드를 조회합니다.
         """
         query = """
-        SELECT time_bucket($1::interval, timestamp) AS bucket,
+        SELECT time_bucket($1::text::interval, timestamp) AS bucket,
                COUNT(*) as transfer_count,
                SUM(value) as total_value
         FROM token_transfers
         WHERE token_address = $2
-          AND timestamp >= NOW() - ($1::interval * $3)
+          AND timestamp >= NOW() - ($1::text::interval * $3)
         GROUP BY bucket
         ORDER BY bucket ASC
         """

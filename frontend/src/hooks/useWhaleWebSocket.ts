@@ -29,6 +29,41 @@ export function useWhaleWebSocket(url: string) {
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
 
+    // Fetch initial history
+    const httpUrl = url.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws/whales', '/api/v1/whales');
+    fetch(httpUrl)
+      .then(res => res.json())
+      .then(data => {
+        if (!mountedRef.current) return;
+        if (data && Array.isArray(data.whales)) {
+          const fetchedWhales = data.whales.map((w: any) => ({
+            id: w.hash || w.tx_hash,
+            tx_hash: w.hash || w.tx_hash,
+            from_address: w.from_address,
+            to_address: w.to_address,
+            value: w.value,
+            value_eth: w.value_eth,
+            from_label: w.from_label,
+            to_label: w.to_label,
+            block_number: w.block_number,
+            timestamp: w.timestamp
+          }));
+          
+          setMessages(prev => {
+            const merged = [...prev];
+            for (const whale of fetchedWhales) {
+              if (!merged.some(p => p.id === whale.id)) {
+                merged.push(whale);
+              }
+            }
+            // Sort by timestamp descending
+            merged.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+            return merged.slice(0, MAX_ALERTS);
+          });
+        }
+      })
+      .catch(console.error);
+
     try {
       const ws = new WebSocket(url);
       wsRef.current = ws;
@@ -61,7 +96,11 @@ export function useWhaleWebSocket(url: string) {
             timestamp: data.timestamp || new Date().toISOString(),
           };
 
-          setMessages((prev) => [alert, ...prev].slice(0, MAX_ALERTS));
+          setMessages((prev) => {
+            // Check for duplicates
+            if (prev.some((p) => p.id === alert.id)) return prev;
+            return [alert, ...prev].slice(0, MAX_ALERTS);
+          });
         } catch {
           // Ignore malformed messages
         }
