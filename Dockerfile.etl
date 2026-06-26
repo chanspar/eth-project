@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir setuptools ethereum-etl python-dotenv kafka-pytho
 
 # 스트리밍 스크립트 복사
 COPY run_stream.py /app/run_stream.py
-COPY .env /app/.env
+# 환경 변수는 docker-compose를 통해 런타임에 주입받습니다.
 
 # 컨테이너 실행 시 스크립트 가동
 CMD ["python", "/app/run_stream.py"]
