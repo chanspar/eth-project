@@ -12,6 +12,7 @@
 import time
 import requests
 import pandas as pd
+from typing import Optional
 
 import os
 
@@ -30,7 +31,7 @@ MANDATORY_COIN_IDS = [
     "frax-ether", "mantle-staked-ether", "binance-eth"
 ]
 
-def fetch_with_retry(url: str, params: dict = None, timeout: int = 30) -> list:
+def fetch_with_retry(url: str, params: Optional[dict] = None, timeout: int = 30) -> list:
     """429 에러 시 재시도 로직이 포함된 안전한 요청 함수"""
     max_retries = 5
     base_wait = 30 

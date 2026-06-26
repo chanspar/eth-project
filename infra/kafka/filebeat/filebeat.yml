@@ -1,0 +1,16 @@
+filebeat.inputs:
+- type: filestream
+  id: my-filestream-id
+  enabled: true
+  paths:
+    - /var/log/app/*.log
+  parsers:
+    - ndjson:
+        target: ""
+        add_error_key: true
+        message_key: message
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info

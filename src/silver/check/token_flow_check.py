@@ -38,7 +38,7 @@ def run_token_flow_kpi_check(spark: SparkSession, dt: str):
 
     # 1. 기초 지표 (Active Tokens, DEX Ratio, CV)
     aggs = df.select(
-        F.countDistinct("token_address").alias("active_tokens"),
+        F.count_distinct("token_address").alias("active_tokens"),
         F.coalesce(F.avg(F.when((F.col("from_dex").isNotNull()) | (F.col("to_dex").isNotNull()), 1).otherwise(0)), F.lit(0)).alias("dex_ratio"),
         F.coalesce(F.stddev("value_normalized"), F.lit(0)).alias("std_val"),
         F.coalesce(F.avg("value_normalized"), F.lit(0)).alias("avg_val")

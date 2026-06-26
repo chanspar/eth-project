@@ -231,3 +231,8 @@ id_rsa.pub
 *.key
 
 logs
+
+.claude
+.agents
+.gstack*
+.agent

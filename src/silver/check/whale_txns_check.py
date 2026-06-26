@@ -59,7 +59,7 @@ def run_whale_kpi_check(spark: SparkSession, dt: str):
         # CEX-to-CEX
         F.sum(F.when(F.col("flag_cex_to_cex"), F.col("value_eth")).otherwise(0)).alias("cex_to_cex_eth"),
         # High Freq Count
-        F.countDistinct(F.when(F.col("flag_high_freq_sender"), F.col("from_address"))).alias("high_freq_count")
+        F.count_distinct(F.when(F.col("flag_high_freq_sender"), F.col("from_address"))).alias("high_freq_count")
     ).collect()[0]
 
     net_cex_flow = (aggs['total_deposit'] or 0) - (aggs['total_withdrawal'] or 0)

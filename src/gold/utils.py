@@ -1,6 +1,7 @@
 from src.config import GCS_SILVER_PREFIX, GCS_GOLD_PREFIX, BUCKET_NAME, PROJECT_ID, BQ_DATASET_ID
 from pyspark.sql import DataFrame
 from src.silver.spark_config import get_logger
+from typing import Optional
 
 logger = get_logger("Gold Utils")
 
@@ -15,7 +16,7 @@ def gold_path(table: str, dt: str) -> str:
     return f"gs://{BUCKET_NAME}/{GCS_GOLD_PREFIX}/{table}/{partition}/"
 
 
-def write_gold(df: DataFrame, path: str, partition_cols: list = None):
+def write_gold(df: DataFrame, path: str, partition_cols: Optional[list[str]] = None):
     """Gold 레이어 저장"""
     if partition_cols is None:
         partition_cols = ["dt"]
@@ -32,7 +33,7 @@ def write_gold(df: DataFrame, path: str, partition_cols: list = None):
     )
     logger.info(f"✅ 저장 완료: {output_path}")
 
-def write_gold_to_bq(df: DataFrame, table_name: str, partition_cols: list = None):
+def write_gold_to_bq(df: DataFrame, table_name: str, partition_cols: Optional[list[str]] = None):
     if partition_cols is None:
         partition_cols = ["dt"]
     
