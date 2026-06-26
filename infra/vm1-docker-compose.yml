@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # 1. TimescaleDB (메인 데이터베이스)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: timescaledb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-ethereum_etl}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    restart: always
+
+  # 2. FastAPI Backend
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile # 프로젝트 루트의 Dockerfile 사용 (필요시 경로 수정)
+    container_name: fastapi_backend
+    environment:
+      - DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
+      - KAFKA_BOOTSTRAP_SERVERS=${VM2_IP:-127.0.0.1}:9092 # VM 2의 IP를 .env에 설정하세요
+    ports:
+      - "8000:8000"
+    depends_on:
+      - timescaledb
+    restart: always
+    volumes:
+      - backend_logs:/app/logs # 앱 로그를 저장하여 Filebeat가 읽을 수 있게 함
+
+  # 3. Filebeat (백엔드 로그 수집)
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.10.2
+    container_name: filebeat
+    user: root
+    environment:
+      - LOGSTASH_HOST=${VM2_IP:-127.0.0.1}:5044
+    volumes:
+      - backend_logs:/app/logs:ro # 백엔드 로그 볼륨을 읽기 전용으로 마운트
+      - ./infra/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  timescaledb_data:
+  backend_logs:
