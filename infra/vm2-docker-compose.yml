@@ -23,6 +23,26 @@ services:
       - kafka_data:/bitnami/kafka
     restart: always
 
+  # 1-1. Kafka 토픽 자동 생성 (초기화 컨테이너)
+  kafka-init:
+    image: bitnami/kafka:3.4.0
+    container_name: kafka_init
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka to be ready..."
+        until kafka-topics.sh --bootstrap-server kafka:9092 --list > /dev/null 2>&1; do
+          sleep 2
+        done
+        echo "Kafka is ready. Creating topics..."
+        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic blocks --partitions 3 --replication-factor 1 --if-not-exists
+        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
+        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic token_transfers --partitions 3 --replication-factor 1 --if-not-exists
+        echo "✅ All topics created successfully"
+    restart: "no"
+
   # 2. Elasticsearch
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2

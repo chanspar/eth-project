@@ -1,0 +1,27 @@
+# Consumer는 Backend와 동일한 의존성을 사용 (pyproject.toml 기반)
+FROM python:3.11-slim
+
+# Install system dependencies (confluent-kafka에 librdkafka 필요)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency resolution
+RUN pip install uv
+
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv pip install --system -r pyproject.toml
+
+# Copy consumer source code
+COPY src/ /app/src/
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Consumer는 long-running 프로세스
+CMD ["python", "-m", "src.consumer.main"]

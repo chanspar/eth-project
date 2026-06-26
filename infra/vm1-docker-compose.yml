@@ -17,6 +17,7 @@ services:
 
   # 2. FastAPI Backend
   backend:
+    image: ${BACKEND_IMAGE:-fastapi_backend_local}
     build: 
       context: .
       dockerfile: Dockerfile # 프로젝트 루트의 Dockerfile 사용 (필요시 경로 수정)
@@ -24,6 +25,7 @@ services:
     environment:
       - DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
       - KAFKA_BOOTSTRAP_SERVERS=${VM2_IP:-127.0.0.1}:9092 # VM 2의 IP를 .env에 설정하세요
+      - REDIS_HOST=redis
     ports:
       - "8000:8000"
     depends_on:
@@ -32,7 +34,24 @@ services:
     volumes:
       - backend_logs:/app/logs # 앱 로그를 저장하여 Filebeat가 읽을 수 있게 함
 
-  # 3. Filebeat (백엔드 로그 수집)
+  # 3. Kafka Consumer (ETL 데이터를 Kafka에서 읽어 DB에 적재)
+  consumer:
+    image: ${CONSUMER_IMAGE:-kafka_consumer_local}
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    container_name: kafka_consumer
+    environment:
+      - KAFKA_BROKER=${VM2_IP:-127.0.0.1}:9094
+      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - timescaledb
+      - redis
+    restart: always
+
+  # 4. Filebeat (백엔드 로그 수집)
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.10.2
     container_name: filebeat
@@ -44,6 +63,26 @@ services:
       - ./infra/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
     depends_on:
       - backend
+    restart: always
+
+  # 5. Ethereum ETL (데이터 수집)
+  ethereum-etl:
+    image: ${ETL_IMAGE:-ethereum_etl_local}
+    build:
+      context: .
+      dockerfile: Dockerfile.etl
+    container_name: ethereum_etl
+    environment:
+      - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}
+      - KAFKA_OUTPUT=kafka://${VM2_IP:-127.0.0.1}:9094 # VM 2의 카프카 주소
+    restart: always
+
+  # 6. Redis (캐시 시스템)
+  redis:
+    image: redis:7.0-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
     restart: always
 
 volumes:
