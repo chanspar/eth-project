@@ -4,7 +4,7 @@ import Dashboard from './pages/Dashboard';
 import TokenDirectoryPage from './pages/TokenDirectoryPage';
 import { useWhaleWebSocket } from './hooks/useWhaleWebSocket';
 
-const WS_URL = 'ws://localhost:8000/ws/whales';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/whales';
 
 function App() {
   const { messages, status } = useWhaleWebSocket(WS_URL);

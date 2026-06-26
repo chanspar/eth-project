@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Fuel } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface GasData {
   average_gas_price_gwei: number;
