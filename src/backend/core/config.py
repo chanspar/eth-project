@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "*"
     ]
 
     # extra="ignore": 클래스에 정의되지 않은 환경 변수가 .env에 있더라도 그냥 무시하고 넘어갑니다.
