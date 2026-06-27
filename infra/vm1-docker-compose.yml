@@ -1,90 +1,114 @@
-version: '3.8'
+version: '3.8'  # docker-compose 문법 버전
 
-services:
+services:  # 실행할 컨테이너 목록
+
+  # ───────────────────────────────────────────
   # 1. TimescaleDB (메인 데이터베이스)
+  # PostgreSQL 기반의 시계열 데이터 특화 DB
+  # ───────────────────────────────────────────
   timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    container_name: timescaledb
+    image: timescale/timescaledb:latest-pg15  # DockerHub에서 가져올 이미지 (PostgreSQL 15 기반)
+    container_name: timescaledb               # 컨테이너 이름 (다른 컨테이너에서 이 이름으로 접근 가능)
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-ethereum_etl}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}         # DB 유저명, .env에 없으면 postgres 사용
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # DB 비밀번호, .env에 없으면 password 사용
+      POSTGRES_DB: ${POSTGRES_DB:-ethereum_etl}         # 생성할 DB명, .env에 없으면 ethereum_etl 사용
     ports:
-      - "5432:5432"
+      - "5432:5432"  # 호스트포트:컨테이너포트 (EC2 외부에서 5432로 접근 가능)
     volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-    restart: always
+      - timescaledb_data:/var/lib/postgresql/data  # DB 데이터를 볼륨에 저장 (컨테이너 삭제해도 데이터 유지)
+    restart: always  # 컨테이너가 죽으면 자동 재시작
 
+  # ───────────────────────────────────────────
   # 2. FastAPI Backend
+  # REST API 서버
+  # ───────────────────────────────────────────
   backend:
-    image: ${BACKEND_IMAGE:-fastapi_backend_local}
-    build: 
-      context: .
-      dockerfile: Dockerfile # 프로젝트 루트의 Dockerfile 사용 (필요시 경로 수정)
+    image: ${BACKEND_IMAGE:-fastapi_backend_local}  # .env에 BACKEND_IMAGE 있으면 그 이미지 사용, 없으면 로컬 빌드
+    build:
+      context: .              # 빌드 컨텍스트 (현재 디렉토리 기준)
+      dockerfile: Dockerfile  # 사용할 Dockerfile 경로
     container_name: fastapi_backend
     environment:
+      # DB 접속 주소, @timescaledb는 위에서 선언한 컨테이너 이름으로 자동 접근 (같은 네트워크이므로 가능)
       - DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
-      - KAFKA_BOOTSTRAP_SERVERS=${VM2_IP:-127.0.0.1}:9092 # VM 2의 IP를 .env에 설정하세요
-      - REDIS_HOST=redis
+      - KAFKA_BOOTSTRAP_SERVERS=${VM2_IP:-127.0.0.1}:9092  # 카프카 주소, .env에 VM2_IP 없으면 localhost 사용
+      - REDIS_HOST=redis                                    # redis 컨테이너 이름으로 접근
     ports:
-      - "8000:8000"
+      - "8000:8000"  # FastAPI 앱 포트
     depends_on:
-      - timescaledb
+      - timescaledb  # timescaledb 컨테이너가 먼저 실행된 후에 이 컨테이너 시작
     restart: always
     volumes:
-      - backend_logs:/app/logs # 앱 로그를 저장하여 Filebeat가 읽을 수 있게 함
+      - backend_logs:/app/logs  # 로그 파일을 볼륨에 저장 (아래 filebeat가 이 볼륨을 읽어감)
 
-  # 3. Kafka Consumer (ETL 데이터를 Kafka에서 읽어 DB에 적재)
+  # ───────────────────────────────────────────
+  # 3. Kafka Consumer
+  # Kafka에서 ETL 데이터를 읽어 TimescaleDB에 적재
+  # ───────────────────────────────────────────
   consumer:
-    image: ${CONSUMER_IMAGE:-kafka_consumer_local}
+    image: ${CONSUMER_IMAGE:-kafka_consumer_local}  # .env에 CONSUMER_IMAGE 있으면 그 이미지 사용, 없으면 로컬 빌드
     build:
       context: .
-      dockerfile: Dockerfile.consumer
+      dockerfile: Dockerfile.consumer  # consumer 전용 Dockerfile 사용
     container_name: kafka_consumer
     environment:
-      - KAFKA_BROKER=${VM2_IP:-127.0.0.1}:9094
-      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
-      - REDIS_HOST=redis
+      - KAFKA_BROKER=${VM2_IP:-127.0.0.1}:9094  # 카프카 브로커 주소 (VM2에 카프카가 있음)
+      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}  # DB 접속 주소
+      - REDIS_HOST=redis   # redis 컨테이너 이름으로 접근
       - REDIS_PORT=6379
     depends_on:
-      - timescaledb
+      - timescaledb  # timescaledb, redis가 먼저 실행된 후 시작
       - redis
     restart: always
 
-  # 4. Filebeat (백엔드 로그 수집)
+  # ───────────────────────────────────────────
+  # 4. Filebeat
+  # 백엔드 로그를 수집해서 Logstash로 전송
+  # ───────────────────────────────────────────
   filebeat:
-    image: docker.elastic.co/beats/filebeat:8.10.2
+    image: docker.elastic.co/beats/filebeat:8.10.2  # Elastic 공식 이미지
     container_name: filebeat
-    user: root
+    user: root  # 로그 파일을 읽으려면 root 권한 필요
     environment:
-      - LOGSTASH_HOST=${VM2_IP:-127.0.0.1}:5044
+      - LOGSTASH_HOST=${VM2_IP:-127.0.0.1}:5044  # 로그를 전송할 Logstash 주소 (VM2에 위치)
     volumes:
-      - backend_logs:/app/logs:ro # 백엔드 로그 볼륨을 읽기 전용으로 마운트
-      - ./infra/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - backend_logs:/app/logs:ro                                    # backend_logs 볼륨을 읽기전용으로 마운트 (로그 수집용)
+      - ./infra/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro    # filebeat 설정파일을 컨테이너 안으로 마운트
     depends_on:
-      - backend
+      - backend  # backend 컨테이너가 먼저 실행된 후 시작
     restart: always
 
-  # 5. Ethereum ETL (데이터 수집)
+  # ───────────────────────────────────────────
+  # 5. Ethereum ETL
+  # 이더리움 블록체인 데이터를 수집해서 Kafka로 전송
+  # ───────────────────────────────────────────
   ethereum-etl:
-    image: ${ETL_IMAGE:-ethereum_etl_local}
+    image: ${ETL_IMAGE:-ethereum_etl_local}  # .env에 ETL_IMAGE 있으면 그 이미지 사용, 없으면 로컬 빌드
     build:
       context: .
-      dockerfile: Dockerfile.etl
+      dockerfile: Dockerfile.etl  # ETL 전용 Dockerfile 사용
     container_name: ethereum_etl
     environment:
-      - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}
-      - KAFKA_OUTPUT=kafka://${VM2_IP:-127.0.0.1}:9094 # VM 2의 카프카 주소
+      - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}               # Alchemy API 키, 기본값 없음 → .env에 반드시 있어야 함
+      - KAFKA_OUTPUT=kafka://${VM2_IP:-127.0.0.1}:9094   # 수집한 데이터를 전송할 카프카 주소
     restart: always
 
-  # 6. Redis (캐시 시스템)
+  # ───────────────────────────────────────────
+  # 6. Redis
+  # 캐시 시스템 (backend, consumer가 사용)
+  # ───────────────────────────────────────────
   redis:
-    image: redis:7.0-alpine
+    image: redis:7.0-alpine  # 경량 alpine 기반 redis 이미지
     container_name: redis
     ports:
-      - "6379:6379"
+      - "6379:6379"  # Redis 기본 포트
     restart: always
 
+# ───────────────────────────────────────────
+# 볼륨 선언
+# 컨테이너가 삭제되어도 데이터가 유지되는 저장공간
+# ───────────────────────────────────────────
 volumes:
-  timescaledb_data:
-  backend_logs:
+  timescaledb_data:  # TimescaleDB 데이터 저장용 (컨테이너 삭제해도 DB 데이터 유지)
+  backend_logs:      # 로그 공유용 (backend가 쓰고 filebeat가 읽는 공유 볼륨)

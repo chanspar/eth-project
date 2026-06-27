@@ -1,88 +1,137 @@
 version: '3.8'
 
-services:
+services:  # 실행할 컨테이너 목록
+
+  # ───────────────────────────────────────────
   # 1. Kafka (KRaft mode)
+  # Zookeeper 없이 Kafka 단독으로 클러스터 관리하는 최신 방식
+  # bitnami 대신 Confluent 공식 이미지 사용
+  # ───────────────────────────────────────────
   kafka:
-    image: bitnami/kafka:3.4.0
+    image: confluentinc/cp-kafka:7.5.0  # Confluent 공식 Kafka 7.5.0 이미지
     container_name: kafka
     environment:
-      # KRaft mode 설정
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://${VM2_IP:-127.0.0.1}:9094
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_HEAP_OPTS=-Xmx1024m -Xms1024m
+      KAFKA_NODE_ID: 1                              # 이 Kafka 노드의 고유 ID
+      KAFKA_PROCESS_ROLES: broker,controller        # 브로커(데이터처리) + 컨트롤러(클러스터관리) 역할 동시 수행
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER   # 컨트롤러 전용 리스너 이름 지정
+
+      # 리스너 3개 선언 (0.0.0.0 = 모든 네트워크 인터페이스에서 수신)
+      # PLAINTEXT  → 같은 도커 네트워크 내부 통신용 (9092)
+      # CONTROLLER → KRaft 클러스터 내부 컨트롤러 통신용 (9093)
+      # EXTERNAL   → 외부 VM(VM1)에서 접근하는 통신용 (9094)
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+
+      # 각 리스너의 보안 프로토콜 지정 (현재 모두 암호화 없는 PLAINTEXT)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+
+      # 외부에서 접근할 때 알려줄 실제 주소
+      # PLAINTEXT → 도커 내부에서는 컨테이너 이름(kafka)으로 접근
+      # EXTERNAL  → 외부 VM에서는 VM2의 실제 IP로 접근
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://${VM2_IP:-127.0.0.1}:9094
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093  # KRaft 투표에 참여할 컨트롤러 목록 (노드ID@주소:포트)
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT    # 브로커 간 통신에 사용할 리스너 이름
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'        # 없는 토픽으로 메시지 전송 시 자동 생성 (kafka-init과 중복이지만 안전망 역할)
+      KAFKA_NUM_PARTITIONS: 3                        # 자동 생성되는 토픽의 기본 파티션 수
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1      # 오프셋 토픽 복제본 수 (단일 노드라 1로 설정)
+
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'          # KRaft 모드에서 클러스터를 식별하는 고유 ID (고정값, 변경 금지)
+
+      KAFKA_HEAP_OPTS: "-Xmx1024m -Xms1024m"        # JVM 힙 메모리 최소/최대 1GB로 고정
+
+      KAFKA_LOG_RETENTION_HOURS: 24                  # 메시지 보관 기간 (24시간 후 삭제)
+      KAFKA_LOG_RETENTION_BYTES: 5368709120          # 토픽당 최대 로그 크기 5GB (초과 시 오래된 것부터 삭제)
     ports:
-      - "9092:9092"
-      - "9094:9094" # 외부(VM1) 통신용
+      - "9092:9092"  # 도커 내부 통신용 포트
+      - "9094:9094"  # 외부 VM1에서 접근하는 포트
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_data:/var/lib/kafka/data  # Kafka 데이터(토픽, 메시지)를 볼륨에 저장 (컨테이너 삭제해도 유지)
     restart: always
 
-  # 1-1. Kafka 토픽 자동 생성 (초기화 컨테이너)
+  # ───────────────────────────────────────────
+  # 1-1. Kafka 토픽 자동 생성 (초기화 전용 컨테이너)
+  # 최초 1회만 실행하고 종료됨
+  # ───────────────────────────────────────────
   kafka-init:
-    image: bitnami/kafka:3.4.0
+    image: confluentinc/cp-kafka:7.5.0  # kafka와 동일한 이미지 사용 (kafka-topics 명령어 사용하기 위해)
     container_name: kafka_init
     depends_on:
-      - kafka
-    entrypoint: ["/bin/bash", "-c"]
+      - kafka  # kafka 컨테이너가 먼저 실행된 후 시작
+    entrypoint: ["/bin/bash", "-c"]  # 기본 entrypoint 대신 bash로 실행
     command:
       - |
         echo "Waiting for Kafka to be ready..."
-        until kafka-topics.sh --bootstrap-server kafka:9092 --list > /dev/null 2>&1; do
+        # Kafka가 완전히 뜰 때까지 2초마다 재시도 (토픽 목록 조회 성공하면 준비 완료)
+        until kafka-topics --bootstrap-server kafka:9092 --list > /dev/null 2>&1; do
           sleep 2
         done
         echo "Kafka is ready. Creating topics..."
-        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic blocks --partitions 3 --replication-factor 1 --if-not-exists
-        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
-        kafka-topics.sh --create --bootstrap-server kafka:9092 --topic token_transfers --partitions 3 --replication-factor 1 --if-not-exists
+        # 블록 데이터 토픽 생성 (파티션 3개, 복제본 1개, 이미 있으면 스킵)
+        kafka-topics --create --bootstrap-server kafka:9092 --topic blocks --partitions 3 --replication-factor 1 --if-not-exists
+        # 트랜잭션 데이터 토픽 생성
+        kafka-topics --create --bootstrap-server kafka:9092 --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
+        # 토큰 전송 데이터 토픽 생성
+        kafka-topics --create --bootstrap-server kafka:9092 --topic token_transfers --partitions 3 --replication-factor 1 --if-not-exists
         echo "✅ All topics created successfully"
-    restart: "no"
+    restart: "no"  # 초기화 컨테이너이므로 재시작 안함 (1회 실행 후 종료)
 
+  # ───────────────────────────────────────────
   # 2. Elasticsearch
+  # 로그 및 데이터 검색 엔진
+  # ───────────────────────────────────────────
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2  # Elastic 공식 이미지
     container_name: elasticsearch
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false # 개발/테스트용 (프로덕션 배포시 true로 변경 권장)
-      - ES_JAVA_OPTS=-Xms2g -Xmx2g # 최소 2GB 힙 메모리
+      - discovery.type=single-node       # 클러스터 구성 없이 단일 노드로 실행
+      - xpack.security.enabled=false     # 보안 기능 비활성화 (개발용, 프로덕션은 true 권장)
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g      # JVM 힙 메모리 최소/최대 2GB로 고정 (ES는 메모리를 많이 씀)
     ports:
-      - "9200:9200"
+      - "9200:9200"  # Elasticsearch REST API 포트 (Kibana, Logstash에서 이 포트로 접근)
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - es_data:/usr/share/elasticsearch/data  # 인덱싱된 데이터를 볼륨에 저장 (컨테이너 삭제해도 유지)
     restart: always
 
+  # ───────────────────────────────────────────
   # 3. Logstash
+  # Filebeat에서 로그를 받아 가공 후 Elasticsearch로 전송
+  # ───────────────────────────────────────────
   logstash:
     image: docker.elastic.co/logstash/logstash:8.10.2
     container_name: logstash
     environment:
-      - LS_JAVA_OPTS=-Xms1g -Xmx1g
+      - LS_JAVA_OPTS=-Xms1g -Xmx1g  # JVM 힙 메모리 최소/최대 1GB로 고정
     volumes:
+      # logstash 파이프라인 설정파일을 컨테이너 안으로 마운트 (읽기전용)
+      # 이 파일에서 입력(Filebeat) → 가공(filter) → 출력(Elasticsearch) 파이프라인을 정의
       - ./infra/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
     ports:
-      - "5044:5044" # Filebeat에서 로그 받는 포트
+      - "5044:5044"  # Filebeat(VM1)에서 로그를 받는 포트
     depends_on:
-      - elasticsearch
+      - elasticsearch  # elasticsearch가 먼저 실행된 후 시작
     restart: always
 
+  # ───────────────────────────────────────────
   # 4. Kibana
+  # Elasticsearch 데이터를 시각화하는 대시보드
+  # ───────────────────────────────────────────
   kibana:
     image: docker.elastic.co/kibana/kibana:8.10.2
     container_name: kibana
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200  # 연결할 Elasticsearch 주소 (컨테이너 이름으로 접근)
     ports:
-      - "5601:5601"
+      - "5601:5601"  # Kibana 웹 대시보드 포트 (브라우저에서 http://VM2_IP:5601 로 접근)
     depends_on:
-      - elasticsearch
+      - elasticsearch  # elasticsearch가 먼저 실행된 후 시작
     restart: always
 
+# ───────────────────────────────────────────
+# 볼륨 선언
+# 컨테이너가 삭제되어도 데이터가 유지되는 저장공간
+# ───────────────────────────────────────────
 volumes:
-  kafka_data:
-  es_data:
+  kafka_data:  # Kafka 토픽/메시지 저장용
+  es_data:     # Elasticsearch 인덱스 데이터 저장용
+  
