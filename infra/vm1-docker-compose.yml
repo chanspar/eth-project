@@ -71,6 +71,7 @@ services:  # 실행할 컨테이너 목록
     image: docker.elastic.co/beats/filebeat:8.10.2  # Elastic 공식 이미지
     container_name: filebeat
     user: root  # 로그 파일을 읽으려면 root 권한 필요
+    command: ["--strict.perms=false"]  # 호스트에서 마운트한 설정 파일의 소유권(UID) 검사 무시
     environment:
       - LOGSTASH_HOST=${VM2_IP:-127.0.0.1}:5044  # 로그를 전송할 Logstash 주소 (VM2에 위치)
     volumes:
