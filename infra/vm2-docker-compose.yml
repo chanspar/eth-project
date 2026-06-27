@@ -119,7 +119,7 @@ services:  # 실행할 컨테이너 목록
     volumes:
       # logstash 파이프라인 설정파일을 컨테이너 안으로 마운트 (읽기전용)
       # 이 파일에서 입력(Filebeat) → 가공(filter) → 출력(Elasticsearch) 파이프라인을 정의
-      - ./infra/kafka/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./kafka/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
     ports:
       - "5044:5044"  # Filebeat(VM1)에서 로그를 받는 포트
     depends_on:
