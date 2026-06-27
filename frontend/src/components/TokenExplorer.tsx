@@ -129,7 +129,9 @@ export default function TokenExplorer() {
   };
 
   const totalTransfers24h = trends.reduce((acc, curr) => acc + curr.transfer_count, 0);
-  const totalVolume24h = trends.reduce((acc, curr) => acc + curr.total_value, 0);
+  const rawTotalVolume24h = trends.reduce((acc, curr) => acc + curr.total_value, 0);
+  const decimals = selectedToken?.decimals || 18;
+  const totalVolume24h = rawTotalVolume24h / Math.pow(10, decimals);
 
   const chartData = {
     labels: trends.map(t => {
