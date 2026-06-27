@@ -18,6 +18,11 @@ services:  # 실행할 컨테이너 목록
     volumes:
       - timescaledb_data:/var/lib/postgresql/data  # DB 데이터를 볼륨에 저장 (컨테이너 삭제해도 데이터 유지)
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ethereum_etl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: always  # 컨테이너가 죽으면 자동 재시작
 
   # ───────────────────────────────────────────
@@ -40,7 +45,8 @@ services:  # 실행할 컨테이너 목록
     ports:
       - "8000:8000"  # FastAPI 앱 포트
     depends_on:
-      - timescaledb  # timescaledb 컨테이너가 먼저 실행된 후에 이 컨테이너 시작
+      timescaledb:
+        condition: service_healthy
     restart: always
     volumes:
       - backend_logs:/app/logs  # 로그 파일을 볼륨에 저장 (아래 filebeat가 이 볼륨을 읽어감)
@@ -61,8 +67,10 @@ services:  # 실행할 컨테이너 목록
       - REDIS_HOST=redis   # redis 컨테이너 이름으로 접근
       - REDIS_PORT=6379
     depends_on:
-      - timescaledb  # timescaledb, redis가 먼저 실행된 후 시작
-      - redis
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: always
 
   # ───────────────────────────────────────────
