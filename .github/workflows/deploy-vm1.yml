@@ -104,8 +104,6 @@ jobs:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          KAFKA_BROKER: ${{ secrets.KAFKA_BROKER }}
-          ELASTICSEARCH_URL: ${{ secrets.ELASTICSEARCH_URL }}
           ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
           ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
           VM2_IP: ${{ secrets.VM2_IP }}
@@ -116,7 +114,7 @@ jobs:
           host: ${{ secrets.VM1_HOST }}
           username: ${{ secrets.VM1_USER }}
           key: ${{ secrets.VM1_SSH_KEY }}
-          envs: GHCR_TOKEN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,KAFKA_BROKER,ELASTICSEARCH_URL,ALCHEMY_API_KEY,ALLOWED_ORIGINS,VM2_IP,BACKEND_IMAGE,ETL_IMAGE,CONSUMER_IMAGE
+          envs: GHCR_TOKEN,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,ALCHEMY_API_KEY,ALLOWED_ORIGINS,VM2_IP,BACKEND_IMAGE,ETL_IMAGE,CONSUMER_IMAGE
           script: |
             set -e
 
@@ -137,8 +135,6 @@ jobs:
             echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
             echo "POSTGRES_DB=$POSTGRES_DB" >> .env
             echo "POSTGRES_DSN=postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@timescaledb:5432/$POSTGRES_DB" >> .env
-            echo "KAFKA_BROKER=$KAFKA_BROKER" >> .env
-            echo "ELASTICSEARCH_URL=$ELASTICSEARCH_URL" >> .env
             echo "ALCHEMY_API_KEY=$ALCHEMY_API_KEY" >> .env
             echo "ALLOWED_ORIGINS=$ALLOWED_ORIGINS" >> .env
             echo "VM2_IP=$VM2_IP" >> .env
