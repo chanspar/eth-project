@@ -31,9 +31,10 @@ services:  # 실행할 컨테이너 목록
     container_name: fastapi_backend
     environment:
       # DB 접속 주소, @timescaledb는 위에서 선언한 컨테이너 이름으로 자동 접근 (같은 네트워크이므로 가능)
-      - DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
-      - KAFKA_BOOTSTRAP_SERVERS=${VM2_IP:-127.0.0.1}:9094  # 카프카 주소 (외부 통신이므로 9094 사용)
+      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@timescaledb:5432/${POSTGRES_DB:-ethereum_etl}
+      - KAFKA_BROKER=${VM2_IP:-127.0.0.1}:9094  # 카프카 주소 (외부 통신이므로 9094 사용)
       - ELASTICSEARCH_URL=http://${VM2_IP:-127.0.0.1}:9200  # Elasticsearch API 주소
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}                  # CORS 허용 출처
       - REDIS_HOST=redis                                    # redis 컨테이너 이름으로 접근
     ports:
       - "8000:8000"  # FastAPI 앱 포트
