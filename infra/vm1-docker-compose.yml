@@ -107,6 +107,24 @@ services:  # 실행할 컨테이너 목록
     restart: always
 
   # ───────────────────────────────────────────
+  # Caddy (리버스 프록시 및 자동 HTTPS 발급)
+  # 외부 HTTPS 통신을 받아 backend(8000)로 넘겨줌
+  # ───────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    command: caddy reverse-proxy --from my-eth-backend.duckdns.org --to backend:8000
+    depends_on:
+      - backend
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # ───────────────────────────────────────────
   # 6. Redis
   # 캐시 시스템 (backend, consumer가 사용)
   # ───────────────────────────────────────────
@@ -124,3 +142,5 @@ services:  # 실행할 컨테이너 목록
 volumes:
   timescaledb_data:  # TimescaleDB 데이터 저장용 (컨테이너 삭제해도 DB 데이터 유지)
   backend_logs:      # 로그 공유용 (backend가 쓰고 filebeat가 읽는 공유 볼륨)
+  caddy_data:        # Caddy SSL 인증서 저장용
+  caddy_config:      # Caddy 설정 정보 저장용
