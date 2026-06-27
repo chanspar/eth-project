@@ -100,7 +100,7 @@ jobs:
       - name: 10. VM1에 SSH로 접속하여 배포
         uses: appleboy/ssh-action@v1.2.0
         env:
-          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+          GHCR_TOKEN: ${{ secrets.GH_PAT }}
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
