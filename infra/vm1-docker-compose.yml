@@ -17,6 +17,7 @@ services:  # 실행할 컨테이너 목록
       - "5432:5432"  # 호스트포트:컨테이너포트 (EC2 외부에서 5432로 접근 가능)
     volumes:
       - timescaledb_data:/var/lib/postgresql/data  # DB 데이터를 볼륨에 저장 (컨테이너 삭제해도 데이터 유지)
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: always  # 컨테이너가 죽으면 자동 재시작
 
   # ───────────────────────────────────────────

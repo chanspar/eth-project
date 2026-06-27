@@ -93,7 +93,7 @@ jobs:
           host: ${{ secrets.VM1_HOST }}
           username: ${{ secrets.VM1_USER }}
           key: ${{ secrets.VM1_SSH_KEY }}
-          source: "infra/vm1-docker-compose.yml,infra/filebeat.yml"
+          source: "infra/vm1-docker-compose.yml,infra/filebeat.yml,infra/postgres/"
           target: "~/"
           strip_components: 1
 
