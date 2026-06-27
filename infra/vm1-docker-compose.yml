@@ -94,7 +94,7 @@ services:  # 실행할 컨테이너 목록
     container_name: ethereum_etl
     environment:
       - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}               # Alchemy API 키, 기본값 없음 → .env에 반드시 있어야 함
-      - KAFKA_OUTPUT=kafka://${VM2_IP:-127.0.0.1}:9094   # 수집한 데이터를 전송할 카프카 주소
+      - KAFKA_OUTPUT=kafka/${VM2_IP:-127.0.0.1}:9094   # 수집한 데이터를 전송할 카프카 주소 (형식: kafka/ip:port)
     restart: always
 
   # ───────────────────────────────────────────
