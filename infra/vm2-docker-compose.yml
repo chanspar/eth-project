@@ -76,6 +76,20 @@ services:  # 실행할 컨테이너 목록
         echo "✅ All topics created successfully"
     restart: "no"  # 초기화 컨테이너이므로 재시작 안함 (1회 실행 후 종료)
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: eth-kafka # # 웹 화면 왼쪽 상단에 띄울 우리 카프카 클러스터의 대문 이름(닉네임)입니다.
+      # 내부 도커 네트워크 통신이므로 kafka:9092로 접근
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
+
+
   # ───────────────────────────────────────────
   # 2. Elasticsearch
   # 로그 및 데이터 검색 엔진
