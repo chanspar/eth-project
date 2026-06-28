@@ -33,6 +33,7 @@ class TokenService:
             if redis_manager.redis:
                 cached_data = await redis_manager.redis.get(cache_key)
                 if cached_data:
+                    logger.info("Cache HIT", extra={"cache_key": cache_key})
                     return TrendingTokensResponse(**json.loads(cached_data))
 
             # 2. 캐시 미스 시 락 획득 (Cache Stampede 방지)
@@ -41,10 +42,15 @@ class TokenService:
                 if redis_manager.redis:
                     cached_data = await redis_manager.redis.get(cache_key)
                     if cached_data:
+                        logger.info("Cache HIT (after lock)", extra={"cache_key": cache_key})
                         return TrendingTokensResponse(**json.loads(cached_data))
 
                 # 4. 여전히 캐시가 없다면 DB에서 무거운 집계 쿼리 실행
                 rows = await self.repo.get_trending_tokens(hours=hours, limit=limit)
+                logger.info("Cache MISS - DB query executed", extra={
+                    "cache_key": cache_key,
+                    "result_count": len(rows)
+                })
                 tokens = []
                 for row in rows:
                     tokens.append(TrendingToken(

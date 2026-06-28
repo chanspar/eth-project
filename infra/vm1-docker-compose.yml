@@ -72,6 +72,8 @@ services:  # 실행할 컨테이너 목록
       redis:
         condition: service_started
     restart: always
+    volumes:
+      - backend_logs:/app/logs  # JSON 로그를 공유 볼륨에 기록 (Filebeat가 수집)
 
   # ───────────────────────────────────────────
   # 4. Filebeat
@@ -103,8 +105,10 @@ services:  # 실행할 컨테이너 목록
     container_name: ethereum_etl
     environment:
       - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}               # Alchemy API 키, 기본값 없음 → .env에 반드시 있어야 함
-      - KAFKA_OUTPUT=kafka/${VM2_IP:-127.0.0.1}:9094   # 수집한 데이터를 전송할 카프카 주소 (형식: kafka/ip:port)
+      - KAFKA_OUTPUT=kafka/${VM2_IP:-127.0.0.1}:9094   # 수집한 데이터를 전송할 카프카 주소
     restart: always
+    volumes:
+      - backend_logs:/app/logs  # JSON 로그를 공유 볼륨에 기록 (Filebeat가 수집)
 
   # ───────────────────────────────────────────
   # Caddy (리버스 프록시 및 자동 HTTPS 발급)

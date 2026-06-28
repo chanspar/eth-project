@@ -1,4 +1,4 @@
-import logging
+
 import signal
 import time
 from datetime import datetime
@@ -11,8 +11,7 @@ from src.consumer.kafka_client import KafkaConsumerClient, KafkaProducerClient
 from src.consumer.models import BlockModel, TokenTransferModel, TransactionModel
 from src.consumer.redis_client import RedisManager
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+from src.consumer.logger import logger
 
 running = True
 

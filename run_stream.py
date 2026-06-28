@@ -2,12 +2,27 @@ import os
 import subprocess
 import sys
 import json
+import logging
 import requests
 from pathlib import Path
 from dotenv import load_dotenv
+from pythonjsonlogger import jsonlogger
+from logging.handlers import RotatingFileHandler
 
 # .env 파일 로드
 load_dotenv()
+
+# JSON 파일 로거 설정 (ELK 수집용)
+LOGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+_fh = RotatingFileHandler(os.path.join(LOGS_DIR, "etl.log"), maxBytes=10*1024*1024, backupCount=5)
+_fh.setFormatter(jsonlogger.JsonFormatter(
+    fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+    rename_fields={"asctime": "timestamp", "levelname": "level"}
+))
+logger = logging.getLogger("eth-etl")
+logger.setLevel(logging.INFO)
+logger.addHandler(_fh)
 
 # 환경 변수에서 설정값 가져오기 (없으면 에러 발생 혹은 기본값)
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
@@ -58,6 +73,7 @@ else:
         cmd.extend(["--start-block", "24985609"])
 
 # 실행
+logger.info("ETL streaming started", extra={"start_block": start_block, "kafka_output": KAFKA_OUTPUT})
 print("🚀 Ethereum ETL 스트리밍을 시작합니다 (Docker 환경 내부)...")
 print(f"실행 명령어: {' '.join([c if 'alchemy.com' not in c else 'https://eth-mainnet.g.alchemy.com/v2/****' for c in cmd])}")
 
@@ -65,8 +81,11 @@ try:
     # 서브프로세스로 ethereumetl 실행
     subprocess.run(cmd, check=True)
 except KeyboardInterrupt:
+    logger.info("ETL streaming stopped by user")
     print("\n🛑 사용자에 의해 스트리밍이 중단되었습니다.")
 except subprocess.CalledProcessError as e:
+    logger.error("ETL process failed", extra={"exit_code": e.returncode})
     print(f"\n❌ ethereumetl 실행 중 오류가 발생했습니다. (종료 코드: {e.returncode})")
 except FileNotFoundError:
+    logger.error("ethereumetl command not found")
     print("\n❌ 'ethereumetl' 명령어를 찾을 수 없습니다.")

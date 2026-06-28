@@ -38,6 +38,7 @@ class GasService:
             if redis_manager.redis:
                 cached_data = await redis_manager.redis.get(cache_key)
                 if cached_data is not None:
+                    logger.info("Cache HIT", extra={"cache_key": cache_key})
                     return GasMetricsResponse(average_gas_price_gwei=float(cached_data))
             
             # 2. 캐시 Stampede(동시 접근 폭주) 방지를 위한 Lock 획득 및 Double-Checked Locking
@@ -46,11 +47,16 @@ class GasService:
                 if redis_manager.redis:
                     cached_data = await redis_manager.redis.get(cache_key)
                     if cached_data is not None:
+                        logger.info("Cache HIT (after lock)", extra={"cache_key": cache_key})
                         return GasMetricsResponse(average_gas_price_gwei=float(cached_data))
                 
                 # 3. 진짜 캐시 미스인 경우 최초 1명만 DB 쿼리 실행
                 avg_wei = await self.repo.get_average_gas_price_last_5_minutes()
                 avg_gwei = round(avg_wei / 1e9, 2)
+                logger.info("Cache MISS - DB query executed", extra={
+                    "cache_key": cache_key,
+                    "avg_gwei": avg_gwei
+                })
                 
                 # 4. 조회 결과를 Redis에 캐시 저장 (TTL: 60초)
                 if redis_manager.redis:
