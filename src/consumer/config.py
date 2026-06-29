@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
-    TOKEN_EVENTS_TOPIC: str = "token-events"
 
     # extra="ignore": 클래스에 정의되지 않은 환경 변수가 .env에 있더라도 그냥 무시하고 넘어갑니다.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
