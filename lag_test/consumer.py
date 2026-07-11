@@ -1,6 +1,7 @@
 import time
 import json
 import psycopg2
+from datetime import datetime
 from psycopg2.extras import execute_values
 from confluent_kafka import Consumer, KafkaError
 
@@ -9,10 +10,10 @@ from confluent_kafka import Consumer, KafkaError
 # =====================================================================
 # True  : 건별 INSERT + TCP 딜레이 시뮬레이션 (초당 ~60건 처리 -> Lag 우상향)
 # False : 벌크 INSERT (execute_values) 시뮬레이션 (초당 수천 건 처리 -> Lag 0 수렴)
-SLOW_MODE = False  
+SLOW_MODE = True  
 
 BATCH_SIZE = 100
-DB_DSN = "dbname=lag_db user=user password=password host=localhost port=5432"
+DB_DSN = "dbname=eth_data user=user password=password host=localhost port=5432"
 KAFKA_CONF = {
     'bootstrap.servers': 'localhost:9094',
     'group.id': 'lag-test-consumer-group',
@@ -21,23 +22,13 @@ KAFKA_CONF = {
 }
 
 def init_db():
-    """테스트용 DB 테이블 생성"""
+    """테스트용 DB 연결 체크"""
     conn = psycopg2.connect(DB_DSN)
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS test_transactions (
-            hash VARCHAR(66) PRIMARY KEY,
-            timestamp INT,
-            from_address VARCHAR(42),
-            to_address VARCHAR(42),
-            value NUMERIC,
-            gas_price NUMERIC
-        );
-    """)
-    conn.commit()
+    cur.execute("SELECT 1;")
     cur.close()
     conn.close()
-    print("✅ Postgres [test_transactions] 테이블 준비 완료")
+    print("✅ Postgres [eth_data] DB 연결 성공 및 테이블 스키마 확인 완료")
 
 def main():
     try:
@@ -74,16 +65,19 @@ def main():
             
             data = json.loads(msg.value().decode('utf-8'))
             
+            # TimescaleDB TIMESTAMPTZ 입력을 위해 datetime 변환
+            dt_ts = datetime.fromtimestamp(data['timestamp'])
+            
             if SLOW_MODE:
                 # -----------------------------------------------------------
                 # 1. 건별 INSERT 시뮬레이션
                 # -----------------------------------------------------------
                 cur = conn.cursor()
                 cur.execute("""
-                    INSERT INTO test_transactions (hash, timestamp, from_address, to_address, value, gas_price)
+                    INSERT INTO transactions (hash, timestamp, from_address, to_address, value, gas_price)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (hash) DO NOTHING;
-                """, (data['hash'], data['timestamp'], data['from_address'], data['to_address'], data['value'], data['gas_price']))
+                    ON CONFLICT (hash, timestamp) DO NOTHING;
+                """, (data['hash'], dt_ts, data['from_address'], data['to_address'], data['value'], data['gas_price']))
                 conn.commit()
                 cur.close()
                 
@@ -102,15 +96,15 @@ def main():
                 # 2. 배치 INSERT (execute_values) 시뮬레이션
                 # -----------------------------------------------------------
                 batch.append((
-                    data['hash'], data['timestamp'], data['from_address'], data['to_address'], data['value'], data['gas_price']
+                    data['hash'], dt_ts, data['from_address'], data['to_address'], data['value'], data['gas_price']
                 ))
                 
                 if len(batch) >= BATCH_SIZE:
                     cur = conn.cursor()
                     execute_values(cur, """
-                        INSERT INTO test_transactions (hash, timestamp, from_address, to_address, value, gas_price)
+                        INSERT INTO transactions (hash, timestamp, from_address, to_address, value, gas_price)
                         VALUES %s
-                        ON CONFLICT (hash) DO NOTHING;
+                        ON CONFLICT (hash, timestamp) DO NOTHING;
                     """, batch)
                     conn.commit()
                     cur.close()
@@ -137,9 +131,9 @@ def main():
         if batch and not SLOW_MODE:
             cur = conn.cursor()
             execute_values(cur, """
-                INSERT INTO test_transactions (hash, timestamp, from_address, to_address, value, gas_price)
+                INSERT INTO transactions (hash, timestamp, from_address, to_address, value, gas_price)
                 VALUES %s
-                ON CONFLICT (hash) DO NOTHING;
+                ON CONFLICT (hash, timestamp) DO NOTHING;
             """, batch)
             conn.commit()
             cur.close()

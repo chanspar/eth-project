@@ -23,16 +23,18 @@ services:
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
 
   postgres:
-    image: postgres:15-alpine
+    image: timescale/timescaledb:latest-pg15
     container_name: lag-test-postgres
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: lag_db
+      POSTGRES_DB: eth_data
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
 
   prometheus:
     image: prom/prometheus:latest
