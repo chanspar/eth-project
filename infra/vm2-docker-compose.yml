@@ -141,6 +141,74 @@ services:  # 실행할 컨테이너 목록
       - elasticsearch  # elasticsearch가 먼저 실행된 후 시작
     restart: always
 
+  # ───────────────────────────────────────────
+  # 5. Prometheus
+  # 메트릭 데이터 수집 및 저장용 시계열 DB
+  # ───────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./kafka/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    depends_on:
+      - kafka-exporter
+    restart: always
+
+  # ───────────────────────────────────────────
+  # 6. Grafana
+  # 메트릭 데이터 시각화 대시보드
+  # ───────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
+    depends_on:
+      - prometheus
+    restart: always
+
+  # ───────────────────────────────────────────
+  # 7. Kafka Exporter
+  # Kafka 메트릭을 Prometheus 호환 포맷으로 노출
+  # ───────────────────────────────────────────
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    command: ["--kafka.server=kafka:9092"]
+    ports:
+      - "9308:9308"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    depends_on:
+      - kafka
+    restart: always
+
 # ───────────────────────────────────────────
 # 볼륨 선언
 # 컨테이너가 삭제되어도 데이터가 유지되는 저장공간
@@ -148,4 +216,3 @@ services:  # 실행할 컨테이너 목록
 volumes:
   kafka_data:  # Kafka 토픽/메시지 저장용
   es_data:     # Elasticsearch 인덱스 데이터 저장용
-  
